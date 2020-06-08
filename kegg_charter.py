@@ -18,7 +18,7 @@ class KEGGCharter:
         #self.maps = self.KEGG_metabolic_maps()
         
     def get_arguments(self):    
-        parser = argparse.ArgumentParser(description="reCOGnizer - a tool for domain based annotation with the COG database",
+        parser = argparse.ArgumentParser(description="reCOGnizer - A tool for representing genomic potential and transcriptomic expression into KEGG pathways",
                                          epilog="Input file must be specified.")
         parser.add_argument("-f", "--file", type = str,
                             help="TSV or EXCEL table with information to chart")

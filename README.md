@@ -1,6 +1,6 @@
 # KEGGCharter
 
-A tool for mapping metagenomics and metatranscriptomics quantification with KEGG Pathway.
+A tool for representing genomic potential and transcriptomic expression into KEGG pathways.
 
 ## Features
 
