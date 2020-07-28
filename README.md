@@ -19,7 +19,7 @@ sudo KEGGCharter/install.bash
 
 ## Usage
 
-reCOGnizer needs an input file, but that is all it needs!
+KEGGCharter needs an input file, but that is all it needs!
 ```
 usage: kegg_charter.py [-h] [-f FILE] [-o OUTPUT] [--tsv] [-mm METABOLIC_MAPS]
                        [-mgc METAGENOMIC_COLUMNS]
@@ -29,7 +29,8 @@ usage: kegg_charter.py [-h] [-f FILE] [-o OUTPUT] [--tsv] [-mm METABOLIC_MAPS]
                        [-tl {SPECIES,GENUS,FAMILY,ORDER,CLASS,PHYLUM,SUPERKINGDOM}]
                        [--show-available-maps]
 
-reCOGnizer - a tool for domain based annotation with the COG database
+KEGGCharter - A tool for representing genomic potential and transcriptomic
+expression into KEGG pathways
 
 optional arguments:
   -h, --help            show this help message and exit

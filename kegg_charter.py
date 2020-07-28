@@ -18,7 +18,7 @@ class KEGGCharter:
         #self.maps = self.KEGG_metabolic_maps()
         
     def get_arguments(self):    
-        parser = argparse.ArgumentParser(description="reCOGnizer - A tool for representing genomic potential and transcriptomic expression into KEGG pathways",
+        parser = argparse.ArgumentParser(description="KEGGCharter - A tool for representing genomic potential and transcriptomic expression into KEGG pathways",
                                          epilog="Input file must be specified.")
         parser.add_argument("-f", "--file", type = str,
                             help="TSV or EXCEL table with information to chart")
@@ -197,54 +197,6 @@ class KEGGCharter:
         result = [[part[0].strip('ko:'),part[1].upper()] for part in
                    [relation.split('\t') for relation in result]]
         return pd.DataFrame(result, columns = ['KO (KEGG Charter)', 'EC number (KEGG Charter)'])
-       
-    def solve_ec_numbers(self, data):
-        '''
-        The KEGG API manipulation requires alterations of the data that end up
-        with many repeated lines for where there are many EC numbers. 
-        Also, UniProt's mapping retrieves a list of EC numbers that may (and will,
-        most likely) differ from the list from the KEGG API. In this method, all
-        of this information is merged in one column, "EC numbers", and the 
-        information of both methods is compared and merged.
-        :param data: pd.DataFrame - with 'EC number' and 'EC number (KEGG Charter)'
-        columns
-        :returns data with new column 'EC numbers' with integrated information
-        from UniProt mapping and KEGG API
-        '''
-        notnan = data[data['EC number (KEGG Charter)'].notnull()]
-        notnan.drop_duplicates(inplace = True)
-        notnan = notnan.groupby('Protein ID')['EC number (KEGG Charter)'].apply(
-                lambda ecs:'; '.join([ec.split(':')[1] for ec in ecs]))
-        del data['EC number (KEGG Charter)']
-        data.drop_duplicates(inplace = True)
-        data = pd.merge(data, notnan, on = 'Protein ID', how = 'outer')
-        joined_ecs = list()
-        pbar = ProgressBar()
-        for i in pbar(range(len(data))):
-            if data.iloc[i]['EC number'] == data.iloc[i]['EC number (KEGG Charter)']:   # EC number is the same for both methods
-                joined_ecs.append(data.iloc[i]['EC number'])
-            else:
-                if type(data.iloc[i]['EC number']) == float:                            # No EC number from UniProt's mapping...
-                    if type(data.iloc[i]['EC number (KEGG Charter)']) == float:         # ... and none from KEGG API either
-                        joined_ecs.append(np.nan)
-                    else:                                                               # ... and KEGG API's got it
-                        joined_ecs.append(data.iloc[i]['EC number (KEGG Charter)'])
-                else:                                                                   # There is EC number from UniProt ...
-                    if type(data.iloc[i]['EC number (KEGG Charter)']) == float:         # ... and there is none from KEGG API
-                        joined_ecs.append(data.iloc[i]['EC number'])
-                    else:                                                               # ... and there a different one from KEGG API. uh-oh
-                        uniprot_ecs = data.iloc[i]['EC number'].split('; ')
-                        kegg_ecs = data.iloc[i]['EC number (KEGG Charter)'].split('; ')
-                        result = str()
-                        if len([ec for ec in uniprot_ecs if ec in kegg_ecs]) > 0:       # The EC numbers present in both methods are added as is
-                            result += '; '.join(ec for ec in uniprot_ecs if ec in kegg_ecs) + '; '
-                        if len(set(uniprot_ecs) - set(kegg_ecs)) > 0:                   # Checks if there are any UniProt EC numbers not in KEGG API and adds those
-                            result += ' (uniprot_map); '.join([ec for ec in uniprot_ecs if ec not in kegg_ecs]) + ' (uniprot_map); '
-                        if len(set(kegg_ecs) - set(uniprot_ecs)) > 0:                   # Checks if there are any KEGG API EC numbers not in UniProt and adds those
-                            result += ' (kegg_api); '.join([ec for ec in kegg_ecs if ec not in uniprot_ecs]) + ' (kegg_api); '
-                        joined_ecs.append(result[:-2])
-        data['EC numbers'] = joined_ecs
-        return data
     
     # Get metabolic maps from KEGG Pathway
     def KEGGCharter_prokaryotic_maps(self, file = sys.path[0] + '/KEGGCharter_prokaryotic_maps.txt'):
@@ -366,8 +318,7 @@ class KEGGCharter:
         expression values
         :param genera: list of genus to represent
         :param number_of_taxa: int representing the number of diferent taxa to 
-        be represented in the maps, in case the taxa are not specified (will always
-        be used in the common MOSCa pipeline)
+        be represented in the maps, in case the taxa are not specified
         :param level_of_taxa: str - taxonomic level to represent - SPECIES,
         SUPERKINGDOM, ...
         :param output_basename: str - basename for map outputs
@@ -497,7 +448,6 @@ class KEGGCharter:
         ecs = self.ko2ec(kos)
         data = pd.merge(data, ecs, on = 'KO (KEGG Charter)', how = 'left')
         self.timed_message('Merging UniProt and KEGG information on EC numbers')
-        data = self.solve_ec_numbers(data)                                      # TODO - this function probably need to be split into two, and joining of information between UniProt and KEGGCharter likely should be removed - leave it to MOSCA
         
         self.timed_message('Results saved to {}/KEGGCharter_results.{}'.format(
             args.output, 'tsv' if args.tsv else 'xlsx'))
