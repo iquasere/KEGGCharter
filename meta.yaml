@@ -1,6 +1,6 @@
 {% set name = "keggcharter" %}
 {% set version = "0.0.2" %}
-{% set sha256 = "aea5ac40e5b58490c913aa0a1f6d205d54e80e11aa692b40d1fc5c59a5dbe978" %}
+{% set sha256 = "c824ad580a422a55073d569e1567a255472b90ea428af7cf990022522a5587e9" %}
 
 package:
   name: {{ name|lower }}
@@ -17,7 +17,7 @@ build:
 
 requirements:
   run:
-    - matplotlib
+    - matplotlib-base
     - progressbar
     - pandas
     - biopython
@@ -26,7 +26,7 @@ requirements:
 test:
   commands:
     - kegg_charter.py -v
-    
+
 about:
   home: https://github.com/iquasere/KEGGCharter
   license: BSD-3-Clause
