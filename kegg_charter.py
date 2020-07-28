@@ -9,7 +9,7 @@ from matplotlib import colors, cm
 import argparse, pandas as pd, numpy as np, os, pathlib, PIL, re, sys, subprocess
 import matplotlib.pyplot as plt
 
-__version__ = "0.0.1"
+__version__ = "0.0.2"
 
 class KEGGCharter:
     
