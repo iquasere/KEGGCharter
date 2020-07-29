@@ -9,7 +9,7 @@ from matplotlib import colors, cm
 import argparse, pandas as pd, numpy as np, os, pathlib, PIL, re, sys, subprocess
 import matplotlib.pyplot as plt
 
-__version__ = "0.0.3"
+__version__ = "0.0.4"
 
 class KEGGCharter:
     
@@ -34,9 +34,9 @@ class KEGGCharter:
         parser.add_argument("-mtc", "--metatranscriptomic-columns", type = str, 
                             help = "Names of columns with metatranscriptomics quantification")
         parser.add_argument("-tc", "--taxa-column", type = str, default = 'Taxonomic lineage(GENUS)',
-                            help = "Column with the taxa designations to represent with KEGGChart")
+                            help = "Column with the taxa designations to represent with KEGGChart")             # TODO - test this argument without UniProt shenanigans
         parser.add_argument("-tls", "--taxa-list", type = str, 
-                            help = "List of taxa to represent in genomic potential charts (comma separated)")
+                            help = "List of taxa to represent in genomic potential charts (comma separated)")   # TODO - must be tested
         parser.add_argument("-not", "--number-of-taxa", type = str, 
                             help = "Number of taxa to represent in genomic potential charts (comma separated)",
                             default = '10')
@@ -459,9 +459,6 @@ class KEGGCharter:
         self.timed_message('Creating KEGG Pathway representations for {} metabolic pathways.'.format(
                 str(len(metabolic_maps))))
         
-        not_loaded = list(); differential_no_kos = list()
-        i = 1
-        
         # Set colours for taxa if MG data is present
         if hasattr(args, 'metagenomic_columns'):
             args.metagenomic_columns = args.metagenomic_columns.split(',')
@@ -478,36 +475,44 @@ class KEGGCharter:
         if hasattr(args, 'metatranscriptomic_columns'):
             args.metatranscriptomic_columns = args.metatranscriptomic_columns.split(',')
         
+        i = 1
+        failed_maps = list(); differential_no_kos = list()
+        
         # For each metabolic map, will chart genomic potential and differential expression if MG and MT data are available, respectively
         for metabolic_map in metabolic_maps:
-            kegg_pathway_map = KEGGPathwayMap(data, metabolic_map)              # if getting 404 here, is likely because map doesn't exist # TODO - put something here to inform users to report that problem
-            print('[{}/{}] Creating representation for pathway: {}'.format(
-                    str(i), str(len(metabolic_maps)), 
-                    kegg_pathway_map.pathway.title))
-            if args.metagenomic_columns:
-                kegg_pathway_map = KEGGPathwayMap(data, metabolic_map)
-                if args.uniprot_taxonomic_columns:
-                    args.taxa_column = 'Taxonomic lineage ({})'.format(args.taxonomic_level.upper())
-                self.genomic_potential_taxa(kegg_pathway_map, data,
-                        args.metagenomic_columns, dic_colors, 
-                        taxa_column = args.taxa_column,
-                        output_basename = args.output + '/potential')           # TODO - log should be True, fix the other TODO
-            if args.metatranscriptomic_columns:
-                kegg_pathway_map = KEGGPathwayMap(data, metabolic_map)
-                saul_good = self.differential_expression_sample(kegg_pathway_map, data, 
-                        args.metatranscriptomic_columns, 
-                        output_basename = args.output + '/differential',
-                        log = False)
-                if saul_good == 1:
-                    differential_no_kos.append(metabolic_map)
-            plt.close()
+            try:
+                kegg_pathway_map = KEGGPathwayMap(data, metabolic_map)              # if getting 404 here, is likely because map doesn't exist # TODO - put something here to inform users to report that problem
+                print('[{}/{}] Creating representation for pathway [{}]: {}'.format(
+                        str(i), str(len(metabolic_maps)), metabolic_map,
+                        kegg_pathway_map.pathway.title))
+                if args.metagenomic_columns:
+                    kegg_pathway_map = KEGGPathwayMap(data, metabolic_map)
+                    if args.uniprot_taxonomic_columns:
+                        args.taxa_column = 'Taxonomic lineage ({})'.format(args.taxonomic_level.upper())
+                    self.genomic_potential_taxa(kegg_pathway_map, data,
+                            args.metagenomic_columns, dic_colors, 
+                            taxa_column = args.taxa_column,
+                            output_basename = args.output + '/potential')           # TODO - log should be True, fix the other TODO
+                if args.metatranscriptomic_columns:
+                    kegg_pathway_map = KEGGPathwayMap(data, metabolic_map)
+                    saul_good = self.differential_expression_sample(kegg_pathway_map, data, 
+                            args.metatranscriptomic_columns, 
+                            output_basename = args.output + '/differential',
+                            log = False)
+                    if saul_good == 1:
+                        differential_no_kos.append(metabolic_map)
+                plt.close()
+            except:
+                print('[{}/{}] Representation of pathway [{}] has failed!'.format(
+                        str(i), str(len(metabolic_maps)), metabolic_map))
+                failed_maps.append(metabolic_map)
             i += 1
             
-        not_loaded_filename = args.output + '/not_loaded.txt'
+        failed_maps_filename = args.output + '/failed_maps.txt'
         no_kos_filename = args.output + '/no_kos.txt'
         print('{} maps could not be loaded. You can see which ones at {}'.format(
-            len(not_loaded), not_loaded_filename))
-        open(not_loaded_filename, 'w').write('\n'.join(not_loaded))
+            len(failed_maps), failed_maps_filename))
+        open(failed_maps_filename, 'w').write('\n'.join(failed_maps))
         print('{} maps had no KOs attributed to them. You can see which ones at {}'.format(
             len(differential_no_kos), no_kos_filename))
         open(no_kos_filename, 'w').write('\n'.join(differential_no_kos))
