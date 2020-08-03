@@ -18,6 +18,7 @@ build:
     mkdir -p "${dir}"
     cp *.py KEGGCharter_prokaryotic_maps.txt "${dir}/"
     mkdir -p "${PREFIX}/bin"
+    mkdir -p "${PREFIX}/bin"
     chmod +x "${dir}/kegg_charter.py"
     ln -s "${dir}/kegg_charter.py" "${PREFIX}/bin/"
 
