@@ -18,7 +18,7 @@ class KEGGPathwayMap:
         '''
         self.__dict__ = kwargs
         self.pathway_ID = pathway_ID[-5:] if len(pathway_ID) > 5 else pathway_ID
-        self.set_pathway(data, pathway_ID)
+        self.set_pathway(data, pathway_ID, self.ko_column, self.ec_column)
 
     ############################################################################
     ####                              Helper                                ####
@@ -76,7 +76,7 @@ class KEGGPathwayMap:
     ####                            Sets                                    ####
     ############################################################################
 
-    def set_pathway(self, data, pathway_ID):
+    def set_pathway(self, data, pathway_ID, ko_column, ec_column):
         '''
         Set pathway with Kegg Pathway ID
         :param pathway_ID: (str) Kegg Pathway ID
@@ -95,14 +95,15 @@ class KEGGPathwayMap:
             ko.append(self.pathway.orthologs[i].graphics[0].name.rstrip("."))   # 'K16157...' -> 'K16157'
         
         # Set text in boxes to EC numbers
-        data = data[data['EC number (KEGG Charter)'].notnull()][[
-                'KO (KEGG Charter)', 'EC number (KEGG Charter)']]
-        ko_to_ec = {data.iloc[i]['KO (KEGG Charter)']:data.iloc[i]['EC number (KEGG Charter)']
+        data = data[data[ec_column].notnull()][[ko_column, ec_column]]
+        ko_to_ec = {data.iloc[i][ko_column]:data.iloc[i][ec_column]
                     for i in range(len(data))}                                  # {'K16157':'ec:1.14.13.25'}
         for ortholog_rec in self.pathway.orthologs:
             ko = ortholog_rec.graphics[0].name.strip(".")
             if ko in ko_to_ec.keys():
                 ortholog_rec.graphics[0].name = ko_to_ec[ko]
+            else:
+                ortholog_rec.graphics[0].name = ko
 
     ############################################################################
     ####                    Graphical Manipulation                          ####

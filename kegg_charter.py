@@ -9,7 +9,7 @@ from matplotlib import colors, cm
 import argparse, pandas as pd, numpy as np, os, pathlib, PIL, re, sys, subprocess
 import matplotlib.pyplot as plt
 
-__version__ = "0.0.4"
+__version__ = "0.1.0"
 
 class KEGGCharter:
     
@@ -20,8 +20,6 @@ class KEGGCharter:
     def get_arguments(self):    
         parser = argparse.ArgumentParser(description="KEGGCharter - A tool for representing genomic potential and transcriptomic expression into KEGG pathways",
                                          epilog="Input file must be specified.")
-        parser.add_argument("-f", "--file", type = str,
-                            help="TSV or EXCEL table with information to chart")
         parser.add_argument("-o", "--output", type = str, help = "Output directory",
                             default = 'KEGGCharter_results')
         parser.add_argument("--tsv", action = "store_true", default = False,
@@ -29,32 +27,31 @@ class KEGGCharter:
         parser.add_argument("-mm", "--metabolic-maps", type = str, 
                             help = "IDs of metabolic maps to output",
                             default = ','.join(self.KEGGCharter_prokaryotic_maps()))
-        parser.add_argument("-mgc", "--metagenomic-columns", type = str, 
-                            help = "Names of columns with metagenomic quantification")
-        parser.add_argument("-mtc", "--metatranscriptomic-columns", type = str, 
-                            help = "Names of columns with metatranscriptomics quantification")
-        parser.add_argument("-tc", "--taxa-column", type = str, default = 'Taxonomic lineage(GENUS)',
-                            help = "Column with the taxa designations to represent with KEGGChart")             # TODO - test this argument without UniProt shenanigans
+        parser.add_argument("-gcol", "--genomic-columns", type = str, 
+                            help = "Names of columns with genomic identification")
+        parser.add_argument("-tcol", "--transcriptomic-columns", type = str, 
+                            help = "Names of columns with transcriptomics quantification")
         parser.add_argument("-tls", "--taxa-list", type = str, 
                             help = "List of taxa to represent in genomic potential charts (comma separated)")   # TODO - must be tested
         parser.add_argument("-not", "--number-of-taxa", type = str, 
                             help = "Number of taxa to represent in genomic potential charts (comma separated)",
                             default = '10')
-        parser.add_argument("-koc", "--kos-column", type = str, 
-                            help = """"If input file has a column "KO (KEGG Charter)",
-                            setting this option will make KEGG Charter use those KOs instead
-                            (THIS ARGUMENT OVERRIDES KEGG IDS COLUMNS, USING 
-                            KOS DIRECTLY INSTEAD!)""")
+        parser.add_argument("--taxon", type = str, 
+                            help = """Taxon to represent in the legend. This 
+                            overwrittes meta analysis, only set if you have a single
+                            organism and don't want to create a column for taxonomy.""")
+        parser.add_argument("-keggc", "--kegg-column", type = str, help = "Column with KEGG IDs.")
+        parser.add_argument("-koc", "--ko-column", type = str, help = "Column with KOs.")
+        parser.add_argument("--resume", action = "store_true", default = False,
+                            help = "Data inputed has already been analyzed by KEGGCharter.")
         parser.add_argument('-v', '--version', action='version', version='KEGGCharter ' + __version__)
         
-        uniprotArgs = parser.add_argument_group('UniProt arguments')
-        uniprotArgs.add_argument("-utc", "--uniprot-taxonomic-columns", 
-                            action = "store_true", default = False,
-                            help="""If columns have UniProt names, KEGGCharter will
-                            search for UniProt designations (e.g. Taxonomic lineage(GENUS))""")
-        uniprotArgs.add_argument("-tl", "--taxonomic-level", type = str,
-                            choices=['SPECIES', 'GENUS', 'FAMILY', 'ORDER', 'CLASS', 'PHYLUM', 'SUPERKINGDOM'],
-                            help="The taxonomic level to represent")
+        requiredNamed = parser.add_argument_group('required named arguments')
+        requiredNamed.add_argument("-f", "--file", type = str, required = True,
+                            help="TSV or EXCEL table with information to chart")
+        parser.add_argument("-tc", "--taxa-column", type = str, required = True, 
+                            default = 'Taxonomic lineage(GENUS)',
+                            help = "Column with the taxa designations to represent with KEGGChart")             # TODO - test this argument without UniProt shenanigans
         
         special_functions = parser.add_argument_group('Special functions')
         special_functions.add_argument("--show-available-maps", 
@@ -85,8 +82,7 @@ class KEGGCharter:
         print(strftime("%Y-%m-%d %H:%M:%S", gmtime()) + ': ' + message)
         
     def read_input(self, file):
-        input_format = 'excel' if file.endswith('.xlsx') else 'tsv'
-        if input_format == 'excel':
+        if file.endswith('.xlsx'):
             return pd.read_excel(file)
         return pd.read_csv(file, sep = '\t')
     
@@ -107,22 +103,20 @@ class KEGGCharter:
             return pd.DataFrame()
         lens = [len(item) for item in df[column]]
         dictionary = dict()
-        for column in df.columns:
-            dictionary[column] = np.repeat(df[column].values,lens)
+        for col in df.columns:
+            dictionary[col] = np.repeat(df[col].values,lens)
         dictionary[column] = np.concatenate(df[column].values)
         return pd.DataFrame(dictionary) 
         
     # Functions that deal with taxonomies
-    def most_abundant_taxa(self, data, samples, number_of_taxa = 10, 
-                           level_of_taxa = 'GENUS'):
+    def most_abundant_taxa(self, data, samples, taxa_column, number_of_taxa = 10):
         '''
         Calculates top genus from samples
         :param samples: list of mg samples to consider for quantification of genus abundance
         :param n: number of top genus to return
         :return: list of top genus
         '''
-        data = data.groupby("Taxonomic lineage ({})".format(level_of_taxa))[samples].sum(
-            ).sum(axis = 1).sort_values(ascending=False)
+        data = data.groupby(taxa_column)[samples].sum().sum(axis = 1).sort_values(ascending=False)
         if number_of_taxa > len(data.index.tolist()):
             number_of_taxa = len(data.index.tolist())
         return data.index.tolist()[:number_of_taxa]
@@ -139,11 +133,11 @@ class KEGGCharter:
                             else cm.get_cmap("Set3", 12) if ncolor <= 12
                             else cm.get_cmap("rainbow", ncolor))                # if ncolor > 12 a continuous colormap is used instead
             return [colors.to_hex(color_scheme(i)) for i in range(ncolor)]
-        else:
-            for hex_value in hex_values:
-                if not re.search(r'^#(?:[0-9a-fA-F]{3}){1,2}$', hex_value):
-                    sys.exit(Exception("Colors aren't valid hex codes"))
-            return hex_values                                                    # has validated hex values and returns the original list
+        
+        for hex_value in hex_values:
+            if not re.search(r'^#(?:[0-9a-fA-F]{3}){1,2}$', hex_value):
+                sys.exit(Exception("Colors aren't valid hex codes"))
+        return hex_values                                                       # has validated hex values and returns the original list
                 
     
     def get_organisms(self, file):                                              # TODO - is still not in use, but could be to automatically determine most abundant organisms
@@ -155,7 +149,7 @@ class KEGGCharter:
         return pd.read_csv(file, sep = '\t', index_col = 0, header = None)
             
     # Conversion functions
-    def keggid2ko(self, kegg_ids, step = 150):
+    def keggid2ko(self, kegg_ids, kegg_column, step = 150):
         '''
         Converts KEGG_ID genes to Ortholog KO ID from KEGG
         :param KEGG_ID: (list) - KEGG ID genes
@@ -171,13 +165,13 @@ class KEGGCharter:
                 print('KEGG ID to KO broke at index ' + str(i))
                 result = [[part[0] + ';', part[1].strip('ko:')] for part in
                    [relation.split('\t') for relation in result]]
-                return pd.DataFrame(result, columns = ['Cross-reference (KEGG)', 'KO (KEGG Charter)'])
+                return pd.DataFrame(result, columns = [kegg_column, 'KO (KEGG Charter)'])
         result += kegg_link("ko", kegg_ids[len(kegg_ids) - step:]).read().split("\n")[:-1]
         result = [[part[0] + ';', part[1].strip('ko:')] for part in
                    [relation.split('\t') for relation in result]]
-        return pd.DataFrame(result, columns = ['Cross-reference (KEGG)', 'KO (KEGG Charter)'])
+        return pd.DataFrame(result, columns = [kegg_column, 'KO (KEGG Charter)'])
     
-    def ko2ec(self, kos, step = 150):
+    def ko2ec(self, kos, ko_column_name, step = 150):
         '''
         Converts KOs to EC numbers
         :param kos: list of kegg orthologs
@@ -196,7 +190,7 @@ class KEGGCharter:
         result += kegg_link("enzyme", kos[len(kos) - step:]).read().split("\n")[:-1]
         result = [[part[0].strip('ko:'),part[1].upper()] for part in
                    [relation.split('\t') for relation in result]]
-        return pd.DataFrame(result, columns = ['KO (KEGG Charter)', 'EC number (KEGG Charter)'])
+        return pd.DataFrame(result, columns = [ko_column_name, 'EC number (KEGG Charter)'])
     
     # Get metabolic maps from KEGG Pathway
     def KEGGCharter_prokaryotic_maps(self, file = sys.path[0] + '/KEGGCharter_prokaryotic_maps.txt'):
@@ -275,7 +269,7 @@ class KEGGCharter:
         self.pdf2png(kegg_map_file)
         imgs = [PIL.Image.open(file) for file in 
                 [kegg_map_file.replace('.pdf', '.png'), legend_file]]
-        imgs[0] = imgs[0].convert('RGB')                                       # KEGG Maps are converted to RGB by pdftoppm, dunno if converting to RGBA adds any transparency
+        imgs[0] = imgs[0].convert('RGB')                                        # KEGG Maps are converted to RGB by pdftoppm, dunno if converting to RGBA adds any transparency
         imgs[1] = self.resize_image(imgs[1], ratio = 5)
         imgs[1] = self.add_blank_space(imgs[1], imgs[1].width, imgs[0].height)
         imgs_comb = np.hstack([np.asarray(i) for i in imgs])
@@ -283,6 +277,8 @@ class KEGGCharter:
         # save that beautiful picture
         imgs_comb = PIL.Image.fromarray(imgs_comb)
         imgs_comb.save(output)
+        for file in [kegg_map_file, kegg_map_file.replace('.pdf', '.png'), legend_file]:
+            os.remove(file)
         
     # Main functions for genomic potential charting
     def create_potential_legend(self, colors, labels, filename, resize_factor = 10):
@@ -307,7 +303,7 @@ class KEGGCharter:
 
 
 
-    def genomic_potential_taxa(self, kegg_pathway_map, data, samples, dic_colors, 
+    def genomic_potential_taxa(self, kegg_pathway_map, data, samples, dic_colors, ko_column, 
                                taxa = None, taxa_column = 'Taxonomic lineage (GENUS)', 
                                output_basename = None, maxshared = 10):
         '''
@@ -328,9 +324,9 @@ class KEGGCharter:
         # for every taxon, check all boxes it is in, and save that info to box2taxon
         box2taxon = dict()
         for taxon in dic_colors.keys():
-            df = data[data[taxa_column] == taxon][samples + ['KO (KEGG Charter)']]
+            df = data[data[taxa_column] == taxon][samples + [ko_column]]
             df = df[df.any(axis=1)]
-            for ortholog in df['KO (KEGG Charter)']:
+            for ortholog in df[ko_column]:
                 if ortholog in kegg_pathway_map.ko_boxes.keys():
                     for box in kegg_pathway_map.ko_boxes[ortholog]:
                         if box in box2taxon.keys():
@@ -343,10 +339,10 @@ class KEGGCharter:
         kegg_pathway_map.pathway_box_list(box2taxon, dic_colors)
         
         # boxes with KOs identified but not from the most abundant taxa are still identified
-        df = data[samples + ['KO (KEGG Charter)']]
+        df = data[samples + [ko_column]]
         df = df[df.any(axis=1)]
         grey_boxes = list()
-        for ortholog in df['KO (KEGG Charter)']:
+        for ortholog in df[ko_column]:
             if ortholog in kegg_pathway_map.ko_boxes.keys():
                 for box in kegg_pathway_map.ko_boxes[ortholog]:
                     if box not in box2taxon.keys() and box not in grey_boxes:
@@ -377,7 +373,7 @@ class KEGGCharter:
         ax.remove()
         plt.savefig(filename,bbox_inches='tight')
         
-    def differential_expression_sample(self, kegg_pathway_map, data, samples, 
+    def differential_expression_sample(self, kegg_pathway_map, data, samples, ko_column,
                                        output_basename = None, log = True):
         '''
         Represents in small heatmaps the expression levels of each sample on the
@@ -389,7 +385,7 @@ class KEGGCharter:
         :param output_folder: string - name of folder to store pdfs
         :param log: bol - convert the expression values to logarithmic scale?
         '''
-        df = data.groupby('KO (KEGG Charter)')[samples + ['KO (KEGG Charter)']].sum()
+        df = data.groupby(ko_column)[samples + [ko_column]].sum()
         df = df[df.any(axis=1)]
         df['Boxes'] = [kegg_pathway_map.ko_boxes[ko] if ko in 
             kegg_pathway_map.ko_boxes.keys() else np.nan for ko in df.index]
@@ -414,9 +410,9 @@ class KEGGCharter:
     
     def write_results(self, data, output_dir, output_type = 'excel'):
         if output_type == 'excel':
-            data.to_excel('{}/KEGGCharter_results.xlsx'.format(output_dir))
+            data.to_excel('{}/KEGGCharter_results.xlsx'.format(output_dir), index = False)
         else:
-            data.to_csv('{}/KEGGCharter_results.tsv'.format(output_dir), sep = '\t')
+            data.to_csv('{}/KEGGCharter_results.tsv'.format(output_dir), sep = '\t', index = False)
     
     def main(self):
         # Read input
@@ -424,35 +420,42 @@ class KEGGCharter:
         self.timed_message('Arguments valid.')
         
         if args.show_available_maps:
-            exit(self.KEGG_metabolic_maps().to_string())
-        else:
-            if not hasattr(args, 'file'):
-                sys.exit("Must specify input file with --file.")
+            sys.exit(self.KEGG_metabolic_maps().to_string())
+        if not hasattr(args, 'file'):
+            sys.exit("Must specify input file with --file.")
         data = self.read_input(args.file)
         self.timed_message('Data successfully read.')
         
-        # KEGG ID to KO -> if KO column is not set, it will get them with the KEGG API
-        if not args.kos_column:
-            kegg_ids = data[data['Cross-reference (KEGG)'].notnull()]['Cross-reference (KEGG)']
-            kegg_ids = [ide.split(';')[0] for ide in kegg_ids]                      # sometimes Kegg IDs come as mfc:BRM9_0145;mfi:DSM1535_1468; from UniProt IDs mapping. Should be no problem since both IDs should always be same function
-            self.timed_message('Converting {:d} KEGG IDs to KOs through the KEGG API.'.format(len(kegg_ids)))
-            kos = self.keggid2ko(kegg_ids)
-            data = pd.merge(data, kos, on = 'Cross-reference (KEGG)', how = 'left')
-            kos_column = 'KO (KEGG Charter)'
-        else:
-            kos_column = args.kos_column
-
-        # KO to EC number
-        kos = data[data[kos_column].notnull()][kos_column].tolist()
-        self.timed_message('Retrieving EC numbers from {} KOs.'.format(len(kos)))
-        ecs = self.ko2ec(kos)
-        data = pd.merge(data, ecs, on = 'KO (KEGG Charter)', how = 'left')
-        self.timed_message('Merging UniProt and KEGG information on EC numbers')
-        
-        self.timed_message('Results saved to {}/KEGGCharter_results.{}'.format(
-            args.output, 'tsv' if args.tsv else 'xlsx'))
-        self.write_results(data, args.output, 
-                           output_type = ('tsv' if args.tsv else 'excel'))
+        if not args.resume:
+            # KEGG ID to KO -> if KO column is not set, it will get them with the KEGG API
+            if not args.ko_column:
+                kegg_ids = data[data[args.kegg_column].notnull()][args.kegg_column]
+                kegg_ids = [ide.split(';')[0] for ide in kegg_ids]              # TODO - sometimes Kegg IDs come as mfc:BRM9_0145;mfi:DSM1535_1468; from UniProt IDs mapping. Should be no problem since both IDs should always be same function; this should maybe be in MOSCA instead of here
+                self.timed_message('Converting {:d} KEGG IDs to KOs through the KEGG API.'.format(len(kegg_ids)))
+                kos = self.keggid2ko(kegg_ids, args.kegg_column)
+                data = pd.merge(data, kos, on = 'Cross-reference (KEGG)', how = 'left')
+                ko_column = 'KO (KEGG Charter)'
+            else:
+                ko_column = args.ko_column
+            
+            # Expand KOs column if some elements are in the form KO1, KO2, ...
+            data[ko_column] = [ko.split(',') if type(ko) != float else ko for ko in data[ko_column]]
+            wkos = data[data[ko_column].notnull()]; nokos = data[data[ko_column].isnull()]
+            wkos = self.expand_by_list_column(wkos, column = ko_column)
+            data = pd.concat([wkos, nokos])
+            
+            # KO to EC number
+            kos = data[data[ko_column].notnull()][ko_column].tolist()
+            self.timed_message('Retrieving EC numbers from {} KOs.'.format(len(kos)))
+            ecs = self.ko2ec(kos, ko_column)
+            ec_column = 'EC number (KEGG Charter)'
+            data = pd.merge(data, ecs, on = ko_column, how = 'left')
+            
+            self.timed_message('Results saved to {}/KEGGCharter_results.{}'.format(
+                args.output, 'tsv' if args.tsv else 'xlsx'))
+            self.write_results(data, args.output, 
+                               output_type = ('tsv' if args.tsv else 'excel'))
+        ko_column = 'KO'; ec_column = 'EC number (KEGG Charter)'
         
         # Begin dat chart magic
         metabolic_maps = args.metabolic_maps.split(',')
@@ -460,20 +463,19 @@ class KEGGCharter:
                 str(len(metabolic_maps))))
         
         # Set colours for taxa if MG data is present
-        if hasattr(args, 'metagenomic_columns'):
-            args.metagenomic_columns = args.metagenomic_columns.split(',')
+        if hasattr(args, 'genomic_columns'):
+            args.genomic_columns = args.genomic_columns.split(',')
             if args.taxa_list is None:
-                taxa = self.most_abundant_taxa(data, args.metagenomic_columns, 
-                                   number_of_taxa = int(args.number_of_taxa),
-                                   level_of_taxa = args.taxonomic_level.upper())
+                taxa = self.most_abundant_taxa(data, args.genomic_columns, args.taxa_column,
+                                   number_of_taxa = int(args.number_of_taxa))
             else:
                 taxa = args.taxa_list.split(',')
                 
             colors = self.taxa_colors(ncolor = len(taxa))
             dic_colors = {taxa[i] : colors[i] for i in range(len(taxa))}
             
-        if hasattr(args, 'metatranscriptomic_columns'):
-            args.metatranscriptomic_columns = args.metatranscriptomic_columns.split(',')
+        if args.transcriptomic_columns:
+            args.transcriptomic_columns = args.transcriptomic_columns.split(',')
         
         i = 1
         failed_maps = list(); differential_no_kos = list()
@@ -481,30 +483,32 @@ class KEGGCharter:
         # For each metabolic map, will chart genomic potential and differential expression if MG and MT data are available, respectively
         for metabolic_map in metabolic_maps:
             try:
-                kegg_pathway_map = KEGGPathwayMap(data, metabolic_map)              # if getting 404 here, is likely because map doesn't exist # TODO - put something here to inform users to report that problem
+                kegg_pathway_map = KEGGPathwayMap(data, metabolic_map,
+                    ko_column = ko_column, ec_column = ec_column)               # if getting 404 here, is likely because map doesn't exist
                 print('[{}/{}] Creating representation for pathway [{}]: {}'.format(
                         str(i), str(len(metabolic_maps)), metabolic_map,
                         kegg_pathway_map.pathway.title))
-                if args.metagenomic_columns:
-                    kegg_pathway_map = KEGGPathwayMap(data, metabolic_map)
-                    if args.uniprot_taxonomic_columns:
-                        args.taxa_column = 'Taxonomic lineage ({})'.format(args.taxonomic_level.upper())
+                if args.genomic_columns:                                        # when not set is None
+                    kegg_pathway_map = KEGGPathwayMap(data, metabolic_map,
+                        ko_column = ko_column, ec_column = ec_column)
                     self.genomic_potential_taxa(kegg_pathway_map, data,
-                            args.metagenomic_columns, dic_colors, 
+                            args.genomic_columns, dic_colors, ko_column,
                             taxa_column = args.taxa_column,
-                            output_basename = args.output + '/potential')           # TODO - log should be True, fix the other TODO
-                if args.metatranscriptomic_columns:
-                    kegg_pathway_map = KEGGPathwayMap(data, metabolic_map)
+                            output_basename = args.output + '/potential')
+                if args.transcriptomic_columns:                                 # when not set is None
+                    kegg_pathway_map = KEGGPathwayMap(data, metabolic_map,
+                    ko_column = ko_column, ec_column = ec_column)
                     saul_good = self.differential_expression_sample(kegg_pathway_map, data, 
-                            args.metatranscriptomic_columns, 
+                            args.transcriptomic_columns,  ko_column,
                             output_basename = args.output + '/differential',
                             log = False)
                     if saul_good == 1:
                         differential_no_kos.append(metabolic_map)
                 plt.close()
-            except:
+            except Exception as e:
                 print('[{}/{}] Representation of pathway [{}] has failed!'.format(
                         str(i), str(len(metabolic_maps)), metabolic_map))
+                print(e)
                 failed_maps.append(metabolic_map)
             i += 1
             
