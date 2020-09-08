@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 from Bio.KEGG.KGML import KGML_parser, KGML_pathway
-from Bio.KEGG.REST import kegg_get
+from Bio.KEGG.REST import kegg_get, kegg_link
 from Bio.Graphics.KGML_vis import KGMLCanvas
 from matplotlib import colors, cm
 
@@ -86,7 +86,7 @@ class KEGGPathwayMap:
         self.ko_boxes = dict()
         for i in range(len(self.pathway.orthologs)):
             self.set_bgcolor(self.pathway.orthologs[i], "#ffffff")              # set all boxes to white
-            self.set_fgcolor(self.pathway.orthologs[i], "#ffffff")              # ditto
+            #self.set_fgcolor(self.pathway.orthologs[i], "#ffffff")             # This might be helpful in the future, if an additional layer of marking is needed
             orthologs_in_box = [ide[3:] for ide in self.pathway.orthologs[i].name.split()]  # 'ko:K16157 ko:K16158 ko:K16159' -> ['K16157', 'K16158', 'K16159']
             for ortholog in orthologs_in_box:
                 if ortholog not in self.ko_boxes.keys():
@@ -95,15 +95,16 @@ class KEGGPathwayMap:
             ko.append(self.pathway.orthologs[i].graphics[0].name.rstrip("."))   # 'K16157...' -> 'K16157'
         
         # Set text in boxes to EC numbers
-        data = data[data[ec_column].notnull()][[ko_column, ec_column]]
-        ko_to_ec = {data.iloc[i][ko_column]:data.iloc[i][ec_column]
-                    for i in range(len(data))}                                  # {'K16157':'ec:1.14.13.25'}
         for ortholog_rec in self.pathway.orthologs:
-            ko = ortholog_rec.graphics[0].name.strip(".")
-            if ko in ko_to_ec.keys():
-                ortholog_rec.graphics[0].name = ko_to_ec[ko]
+            ecs = list()
+            kos = ortholog_rec.name.split()
+            for ko in kos:
+                lines = kegg_link("enzyme", ko).read().split('\n')
+                ecs += [line.split('\t')[1] for line in lines if len(line) > 0]
+            if len(ecs) > 0:
+                ortholog_rec.graphics[0].name = max(set(ecs), key = ecs.count).upper()
             else:
-                ortholog_rec.graphics[0].name = ko
+                ortholog_rec.graphics[0].name = kos[0][3:]
 
     ############################################################################
     ####                    Graphical Manipulation                          ####

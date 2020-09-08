@@ -7,9 +7,9 @@ from time import gmtime, strftime
 from io import StringIO
 from matplotlib import colors, cm
 import argparse, pandas as pd, numpy as np, os, pathlib, PIL, re, sys, subprocess
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt, traceback
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 class KEGGCharter:
     
@@ -506,6 +506,7 @@ class KEGGCharter:
                         differential_no_kos.append(metabolic_map)
                 plt.close()
             except Exception as e:
+                print(traceback.format_exc())
                 print('[{}/{}] Representation of pathway [{}] has failed!'.format(
                         str(i), str(len(metabolic_maps)), metabolic_map))
                 print(e)
