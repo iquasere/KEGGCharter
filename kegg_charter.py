@@ -36,12 +36,9 @@ class KEGGCharter:
         parser.add_argument("-not", "--number-of-taxa", type = str, 
                             help = "Number of taxa to represent in genomic potential charts (comma separated)",
                             default = '10')
-        parser.add_argument("--taxon", type = str, 
-                            help = """Taxon to represent in the legend. This 
-                            overwrittes meta analysis, only set if you have a single
-                            organism and don't want to create a column for taxonomy.""")
         parser.add_argument("-keggc", "--kegg-column", type = str, help = "Column with KEGG IDs.")
         parser.add_argument("-koc", "--ko-column", type = str, help = "Column with KOs.")
+        parser.add_argument("-ecc", "--ec-column", type = str, help = "Column with EC numbers.")
         parser.add_argument("--resume", action = "store_true", default = False,
                             help = "Data inputed has already been analyzed by KEGGCharter.")
         parser.add_argument('-v', '--version', action='version', version='KEGGCharter ' + __version__)
@@ -191,6 +188,28 @@ class KEGGCharter:
         result = [[part[0].strip('ko:'),part[1].upper()] for part in
                    [relation.split('\t') for relation in result]]
         return pd.DataFrame(result, columns = [ko_column_name, 'EC number (KEGG Charter)'])
+    
+    def ec2ko(self, ecnumbers, ec_column_name, step = 150):
+        '''
+        Converts KOs to EC numbers
+        :param kos: list of kegg orthologs
+        :return: dic associating ortholog kegg id with list
+        of assotiated EC numbers
+        '''
+        result = list()
+        pbar = ProgressBar()
+        for i in pbar(range(0, len(ecnumbers), step)):
+            try:
+                result += kegg_link("ko", ecnumbers[i:i+step]).read().split("\n")[:-1]
+            except:
+                print('KO to EC number broke at index ' + str(i))
+                result = [relation.split('\t') for relation in result]
+                return list(map(list, zip(*result)))
+        result += kegg_link("enzyme", ecnumbers[len(ecnumbers) - step:]).read().split("\n")[:-1]
+        result = [[part[0], part[1].strip('ko:')] for part in
+                   [relation.split('\t') for relation in result[:-1]]]
+        print(pd.DataFrame(result, columns = [ec_column_name, 'KO (KEGG Charter)']))
+        return pd.DataFrame(result, columns = [ec_column_name, 'KO (KEGG Charter)'])
     
     # Get metabolic maps from KEGG Pathway
     def KEGGCharter_prokaryotic_maps(self, file = sys.path[0] + '/KEGGCharter_prokaryotic_maps.txt'):
@@ -429,14 +448,24 @@ class KEGGCharter:
         if not args.resume:
             # KEGG ID to KO -> if KO column is not set, it will get them with the KEGG API
             if not args.ko_column:
-                kegg_ids = data[data[args.kegg_column].notnull()][args.kegg_column]
-                kegg_ids = [ide.split(';')[0] for ide in kegg_ids]              # TODO - sometimes Kegg IDs come as mfc:BRM9_0145;mfi:DSM1535_1468; from UniProt IDs mapping. Should be no problem since both IDs should always be same function; this should maybe be in MOSCA instead of here
-                self.timed_message('Converting {:d} KEGG IDs to KOs through the KEGG API.'.format(len(kegg_ids)))
-                kos = self.keggid2ko(kegg_ids, args.kegg_column)
-                data = pd.merge(data, kos, on = 'Cross-reference (KEGG)', how = 'left')
+                if args.kegg_column:
+                    kegg_ids = data[data[args.kegg_column].notnull()][args.kegg_column]
+                    kegg_ids = [ide.split(';')[0] for ide in kegg_ids]              # TODO - sometimes Kegg IDs come as mfc:BRM9_0145;mfi:DSM1535_1468; from UniProt IDs mapping. Should be no problem since both IDs should always be same function; this should maybe be in MOSCA instead of here
+                    self.timed_message('Converting {} KEGG IDs to KOs through the KEGG API.'.format(len(kegg_ids)))
+                    kos = self.keggid2ko(kegg_ids, args.kegg_column)
+                    data = pd.merge(data, kos, on = args.kegg_column, how = 'left')
+                elif args.ec_column:
+                    ec_numbers = data[data[args.ec_column].notnull()][args.ec_column]
+                    ec_numbers = ['ec:{}'.format(ide) for ide in ec_numbers]
+                    self.timed_message('Converting {} EC numbers to KOs through the KEGG API.'.format(len(ec_numbers)))
+                    kos = self.ec2ko(ec_numbers, args.ec_column)
+                    ec_column = args.ec_column
+                    kos[ec_column] = [ide[3:] for ide in kos[ec_column]]
+                    data = pd.merge(data, kos, on = args.ec_column, how = 'left')
                 ko_column = 'KO (KEGG Charter)'
             else:
                 ko_column = args.ko_column
+            data[ko_column] = data[ko_column].apply(lambda x: x.rstrip(';') if type(x) != float else x)   # If coming from UniProt ID mapping, KOs will be in the form KXXXXX;
             
             # Expand KOs column if some elements are in the form KO1, KO2, ...
             data[ko_column] = [ko.split(',') if type(ko) != float else ko for ko in data[ko_column]]
@@ -444,18 +473,21 @@ class KEGGCharter:
             wkos = self.expand_by_list_column(wkos, column = ko_column)
             data = pd.concat([wkos, nokos])
             
-            # KO to EC number
-            kos = data[data[ko_column].notnull()][ko_column].tolist()
-            self.timed_message('Retrieving EC numbers from {} KOs.'.format(len(kos)))
-            ecs = self.ko2ec(kos, ko_column)
-            ec_column = 'EC number (KEGG Charter)'
-            data = pd.merge(data, ecs, on = ko_column, how = 'left')
-            
-            self.timed_message('Results saved to {}/KEGGCharter_results.{}'.format(
-                args.output, 'tsv' if args.tsv else 'xlsx'))
+            if not args.ec_column:
+                # KO to EC number
+                kos = data[data[ko_column].notnull()][ko_column].tolist()
+                self.timed_message('Retrieving EC numbers from {} KOs.'.format(len(kos)))
+                ecs = self.ko2ec(kos, ko_column)
+                ec_column = 'EC number (KEGG Charter)'
+                data = pd.merge(data, ecs, on = ko_column, how = 'left')
+                
             self.write_results(data, args.output, 
                                output_type = ('tsv' if args.tsv else 'excel'))
-        ko_column = 'KO'; ec_column = 'EC number (KEGG Charter)'
+            self.timed_message('Results saved to {}/KEGGCharter_results.{}'.format(
+                args.output, 'tsv' if args.tsv else 'xlsx'))
+
+        ko_column = args.ko_column if args.ko_column else 'KO (KEGG Charter)'
+        ec_column = args.ec_column if args.ec_column else 'EC number (KEGG Charter)'
         
         # Begin dat chart magic
         metabolic_maps = args.metabolic_maps.split(',')

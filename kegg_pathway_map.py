@@ -82,7 +82,6 @@ class KEGGPathwayMap:
         :param pathway_ID: (str) Kegg Pathway ID
         '''
         self.pathway = self.load_kegg_map(self.pathway_ID)                      # get the KGML
-        ko = list()
         self.ko_boxes = dict()
         for i in range(len(self.pathway.orthologs)):
             self.set_bgcolor(self.pathway.orthologs[i], "#ffffff")              # set all boxes to white
@@ -92,15 +91,13 @@ class KEGGPathwayMap:
                 if ortholog not in self.ko_boxes.keys():
                     self.ko_boxes[ortholog] = list()
                 self.ko_boxes[ortholog].append(i)                               # {'K16157':[0,13,432], 'K16158':[4,13,545]}
-            ko.append(self.pathway.orthologs[i].graphics[0].name.rstrip("."))   # 'K16157...' -> 'K16157'
         
         # Set text in boxes to EC numbers
         for ortholog_rec in self.pathway.orthologs:
-            ecs = list()
+            lines = list()
             kos = ortholog_rec.name.split()
-            for ko in kos:
-                lines = kegg_link("enzyme", ko).read().split('\n')
-                ecs += [line.split('\t')[1] for line in lines if len(line) > 0]
+            lines += kegg_link("enzyme", kos).read().split('\n')
+            ecs = [line.split('\t')[1] for line in lines if len(line) > 0]
             if len(ecs) > 0:
                 ortholog_rec.graphics[0].name = max(set(ecs), key = ecs.count).upper()
             else:
