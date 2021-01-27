@@ -11,64 +11,57 @@ KEGGCharter is a user-friendly implementation of KEGG API and Pathway functional
 
 ## Installation
 
-To install KEGGCharter, simply clone this repository and run install.bash! It requires Conda previousy installed!
+KEGGCharter can be easily installed with Bioconda
 ```
-git clone https://github.com/iquasere/KEGGCharter.git
-sudo KEGGCharter/install.bash
+conda install -c conda-forge -c bioconda keggcharter
 ```
 
 ## Usage
 
 KEGGCharter needs an input file, but that is all it needs!
 ```
-usage: kegg_charter.py [-h] [-f FILE] [-o OUTPUT] [--tsv] [-mm METABOLIC_MAPS]
-                       [-mgc METAGENOMIC_COLUMNS]
-                       [-mtc METATRANSCRIPTOMIC_COLUMNS] [-tc TAXA_COLUMN]
-                       [-tls TAXA_LIST] [-not NUMBER_OF_TAXA]
-                       [-koc KOS_COLUMN] [-v] [-utc]
-                       [-tl {SPECIES,GENUS,FAMILY,ORDER,CLASS,PHYLUM,SUPERKINGDOM}]
-                       [--show-available-maps]
+usage: kegg_charter.py [-h] [-o OUTPUT] [--tsv] [-t THREADS]
+                       [-mm METABOLIC_MAPS] [-gcol GENOMIC_COLUMNS]
+                       [-tcol TRANSCRIPTOMIC_COLUMNS] [-tls TAXA_LIST]
+                       [-not NUMBER_OF_TAXA] [-keggc KEGG_COLUMN]
+                       [-koc KO_COLUMN] [-ecc EC_COLUMN] [--resume] [-v] -f
+                       FILE -tc TAXA_COLUMN [--show-available-maps]
 
 KEGGCharter - A tool for representing genomic potential and transcriptomic
 expression into KEGG pathways
 
 optional arguments:
   -h, --help            show this help message and exit
-  -f FILE, --file FILE  TSV or EXCEL table with information to chart
   -o OUTPUT, --output OUTPUT
                         Output directory
   --tsv                 Results will be outputed in TSV format (and not
                         EXCEL).
   -mm METABOLIC_MAPS, --metabolic-maps METABOLIC_MAPS
                         IDs of metabolic maps to output
-  -mgc METAGENOMIC_COLUMNS, --metagenomic-columns METAGENOMIC_COLUMNS
-                        Names of columns with metagenomic quantification
-  -mtc METATRANSCRIPTOMIC_COLUMNS, --metatranscriptomic-columns METATRANSCRIPTOMIC_COLUMNS
-                        Names of columns with metatranscriptomics
-                        quantification
-  -tc TAXA_COLUMN, --taxa-column TAXA_COLUMN
-                        Column with the taxa designations to represent with
-                        KEGGChart
+  -gcol GENOMIC_COLUMNS, --genomic-columns GENOMIC_COLUMNS
+                        Names of columns with genomic identification
+  -tcol TRANSCRIPTOMIC_COLUMNS, --transcriptomic-columns TRANSCRIPTOMIC_COLUMNS
+                        Names of columns with transcriptomics quantification
   -tls TAXA_LIST, --taxa-list TAXA_LIST
                         List of taxa to represent in genomic potential charts
                         (comma separated)
   -not NUMBER_OF_TAXA, --number-of-taxa NUMBER_OF_TAXA
                         Number of taxa to represent in genomic potential
                         charts (comma separated)
-  -koc KOS_COLUMN, --kos-column KOS_COLUMN
-                        "If input file has a column "KO (KEGG Charter)",
-                        setting this option will make KEGG Charter use those
-                        KOs instead (THIS ARGUMENT OVERRIDES KEGG IDS COLUMNS,
-                        USING KOS DIRECTLY INSTEAD!)
+  -keggc KEGG_COLUMN, --kegg-column KEGG_COLUMN
+                        Column with KEGG IDs.
+  -koc KO_COLUMN, --ko-column KO_COLUMN
+                        Column with KOs.
+  -ecc EC_COLUMN, --ec-column EC_COLUMN
+                        Column with EC numbers.
+  --resume              Data inputed has already been analyzed by KEGGCharter.
   -v, --version         show program's version number and exit
+  -tc TAXA_COLUMN, --taxa-column TAXA_COLUMN
+                        Column with the taxa designations to represent with
+                        KEGGChart
 
-UniProt arguments:
-  -utc, --uniprot-taxonomic-columns
-                        If columns have UniProt names, KEGGCharter will search
-                        for UniProt designations (e.g. Taxonomic
-                        lineage(GENUS))
-  -tl {SPECIES,GENUS,FAMILY,ORDER,CLASS,PHYLUM,SUPERKINGDOM}, --taxonomic-level {SPECIES,GENUS,FAMILY,ORDER,CLASS,PHYLUM,SUPERKINGDOM}
-                        The taxonomic level to represent
+required named arguments:
+  -f FILE, --file FILE  TSV or EXCEL table with information to chart
 
 Special functions:
   --show-available-maps

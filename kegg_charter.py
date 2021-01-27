@@ -36,8 +36,8 @@ def get_arguments():
                         default='KEGGCharter_results')
     parser.add_argument("--tsv", action="store_true", default=False,
                         help="Results will be outputed in TSV format (and not EXCEL).")
-    parser.add_argument("-t", "--threads", type=str, default=str(multiprocessing.cpu_count() - 2),
-                        help="Number of threads for reCOGnizer to use. Default is number of CPUs available minus 2.")
+    #parser.add_argument("-t", "--threads", type=str, default=str(multiprocessing.cpu_count() - 2),
+    #                    help="Number of threads for reCOGnizer to use. Default is number of CPUs available minus 2.")
     parser.add_argument("-mm", "--metabolic-maps", type=str,
                         help="IDs of metabolic maps to output",
                         default=','.join(KEGGCharter_prokaryotic_maps()))
