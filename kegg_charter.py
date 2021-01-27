@@ -20,6 +20,7 @@ from Bio.KEGG.REST import kegg_link, kegg_list, kegg_get
 from matplotlib import colors, cm
 from progressbar import ProgressBar
 import glob
+from Bio.KEGG.KGML import KGML_parser
 
 from kegg_pathway_map import KEGGPathwayMap
 
@@ -510,21 +511,18 @@ def write_kgmls(mmaps, out_dir):
 
 
 def chart_map(mmap, data, output=None, ko_column=None, ec_column=None, taxa_column=None, dic_colors=None,
-              genomic_columns=None, transcriptomic_columns=None, failed_filename=None):
-    timed_message('Handling [{}]'.format(mmap))
-    kgml_file = '{}/map{}.xml'.format(sys.path[0], mmap)
-    ko_boxes = dict()
+              genomic_columns=None, transcriptomic_columns=None):
+    timed_message('Handling pathway: {}'.format(mmap.title))
     if genomic_columns:  # when not set is None
-        kegg_pathway_map = KEGGPathwayMap(kgml_file=kgml_file)
+        kegg_pathway_map = KEGGPathwayMap(pathway=mmap)
         genomic_potential_taxa(
             kegg_pathway_map, data, genomic_columns, dic_colors, ko_column, taxa_column=taxa_column,
             output_basename=output + '/potential')
     if transcriptomic_columns:  # when not set is None
-        kegg_pathway_map = KEGGPathwayMap(kgml_file=kgml_file)
+        kegg_pathway_map = KEGGPathwayMap(pathway=mmap)
         differential_expression_sample(
             kegg_pathway_map, data, transcriptomic_columns, ko_column, output_basename=output + '/differential',
             log=False)
-
 
 
 def main():
@@ -574,15 +572,21 @@ def main():
 
     # For each metabolic map, will chart genomic potential and differential expression if MG and MT data are available, respectively
 
-    for mmap in metabolic_maps[:10]:
-        chart_map(mmap, data, args.output, ko_column, ec_column,
+    pathways = [KGML_parser.read(open('{}/map{}.xml'.format(sys.path[0], mmap))) for mmap in metabolic_maps]
+    for pathway in pathways:
+        #try:
+        chart_map(pathway, data, args.output, ko_column, ec_column,
                          args.taxa_column, dic_colors, args.genomic_columns,
                          args.transcriptomic_columns)
+        #except:
+        #    failed_maps.append(mmap)
+
     '''
+    
     with multiprocessing.Pool() as p:
-        p.starmap(chart_map, [(metabolic_map, data, args.output, ko_column, ec_column, args.taxa_column, dic_colors,
+        p.starmap(chart_map, [(handler, data, args.output, ko_column, ec_column, args.taxa_column, dic_colors,
                               args.genomic_columns, args.transcriptomic_columns,
-                              '{}/failed_maps.txt'.format(args.output)) for metabolic_map in metabolic_maps[:10]])
+                              '{}/failed_maps.txt'.format(args.output)) for handler in pathways])
     '''
     failed_maps_filename = args.output + '/failed_maps.txt'
     no_kos_filename = args.output + '/no_kos.txt'
@@ -592,7 +596,6 @@ def main():
     print('{} maps had no KOs attributed to them. You can see which ones at {}'.format(
         len(differential_no_kos), no_kos_filename))
     open(no_kos_filename, 'w').write('\n'.join(differential_no_kos))
-    exit(0)  # TODO - this is not at all conventional, but for now seems necessary for integration into snakemake
 
 
 if __name__ == '__main__':

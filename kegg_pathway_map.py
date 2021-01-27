@@ -97,13 +97,13 @@ class KEGGPathwayMap:
     This class retrieves and manipulates KEGG metabolic maps from KEGG Pathway
     """
 
-    def __init__(self, kgml_file):
+    def __init__(self, pathway):
         """
         Initialize object
         :param data: pd.DataFrame - data from MOSCA analysis
         :param kgml_file: (str) - KGML filename
         """
-        self.pathway = KGML_parser.read(open(kgml_file))
+        self.pathway = pathway
         self.set_pathway()
 
     ############################################################################
@@ -129,6 +129,7 @@ class KEGGPathwayMap:
                     self.ko_boxes[ortholog] = list()
                 self.ko_boxes[ortholog].append(i)  # {'K16157':[0,13,432], 'K16158':[4,13,545]}
 
+        #print('finished 1')
         # Set text in boxes to EC numbers
         for ortholog_rec in self.pathway.orthologs:
             lines = list()
@@ -140,6 +141,7 @@ class KEGGPathwayMap:
             else:
                 ortholog_rec.graphics[0].name = kos[0][3:]
 
+        #print('finished 2')
     ############################################################################
     ####                          Operations                                ####
     ############################################################################
@@ -162,6 +164,7 @@ class KEGGPathwayMap:
                    label_compounds=compounds,
                    label_maps=maps,
                    label_reaction_entries=reactions).draw(filename)
+        #print('finished writing pdf')
 
     def pathway_box_list(self, taxa_in_box, dic_colors, maxshared=10):
         """
