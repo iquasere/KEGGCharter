@@ -24,7 +24,7 @@ from Bio.KEGG.KGML import KGML_parser
 
 from kegg_pathway_map import KEGGPathwayMap
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 
 def get_arguments():
