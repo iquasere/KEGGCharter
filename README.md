@@ -11,14 +11,57 @@ KEGGCharter is a user-friendly implementation of KEGG API and Pathway functional
 
 ## Installation
 
-KEGGCharter can be easily installed with Bioconda
+KEGGCharter can be easily installed with Bioconda.
 ```
 conda install -c conda-forge -c bioconda keggcharter
 ```
 
-## Usage
+## Running KEGGCharter
 
-KEGGCharter needs an input file, but that is all it needs!
+To run KEGGCharter, an input file must be supplied - see ```Testing KEGGCharter with an example``` section - and columns 
+with genomic and/or transcriptomic information, as well as one column with either KEGG IDs, KOs or EC numbers, must be 
+present in the file and specified through the command line.
+```
+python kegg_charter.py -f input_file.xlsx -o output_folder -mgc mg_column1,mg_column2 -mtc mt_column1,mt_column2 ...
+```
+
+## Testing KEGGCharter with an example
+
+An example input file is available [here](https://github.com/iquasere/KEGGCharter/blob/master/MOSCA_Entry_Report.xlsx). 
+This is one output of [MOSCA](https://github.com/iquasere/MOSCA), which can be directly inputted to KEGGCharter to obtain
+metabolic representations by running:
+```
+kegg_charter.py -f MOSCA_Entry_Report.xlsx -gcol mg -tcol mt_0.01a_normalized,mt_1a_normalized,mt_100a_normalized,mt_0.01b_normalized,mt_1b_normalized,mt_100b_normalized,mt_0.01c_normalized,mt_1c_normalized,mt_100c_normalized -keggc "Cross-reference (KEGG)" -o test_keggcharter -tc "Taxonomic lineage (GENUS)"
+```
+Just make sure ```MOSCA_Entry_Report.xlsx``` is in the present folder, or indicate the path to it. This command will create
+representations for all 252 default maps of KEGGCharter. If you want to represent for less or more, run with the ```--metabolic-maps``` 
+parameter to indicate to KEGGCharter what maps to run (comma separated).
+
+## First time KEGGCharter runs it will take a long time
+
+KEGGCharter needs KGMLs and EC numbers to boxes relations, which it will automatically retrieve for every map inputted. 
+This might take some time, but you only need to run it once. 
+
+Default directory for storing these files is the folder containing the ```kegg_charter.py``` script, but it can be customized
+with the ```--resources-directory``` parameter.
+
+## Outputs
+
+KEGGCharter produces a table from the inputed data with two new columns - KO (KEGG Charter) and EC number (KEGG Charter) - containing the results of conversion of KEGG IDs to KOs and KOs to EC numbers, respectively. This file is saved as ```KEGGCharter_results``` in the output directory. 
+KEGGCharter then represents this information in KEGG metabolic maps. If information is available as result of (meta)genomics analysis, KEGGCharter will localize the boxes whose functions are present in the organisms' genomes, mapping their genomic potential. If (meta)transcriptomics data is available, KEGGCharter will consider the sample as a whole, measuring gene expression and performing a multi-sample comparison for each function in the metabolic maps.
+* maps with genomic information are identified with the prefix "potential_" from genomic potential (figure 1).
+
+![ScreenShot](potential_Methane_metabolism.png)
+Figure 1 - KEGG metabolic map of methane metabolism, with identified taxa for each function from a simulated dataset.
+
+* maps with transcriptomic information are identified with the prefix "differential_" from differential expression (figure 2).
+
+![ScreenShot](differential_Methane_metabolism.png)
+Figure 2 - KEGG metabolic map of methane metabolism, with differential analysis of quantified expression for each function from a simulated dataset.
+
+## Arguments for KEGGCharter
+
+KEGGCharter provides several options for customizing its workflow.
 ```
 usage: kegg_charter.py [-h] [-o OUTPUT] [--tsv] [-t THREADS]
                        [-mm METABOLIC_MAPS] [-gcol GENOMIC_COLUMNS]
@@ -68,26 +111,3 @@ Special functions:
                         Outputs KEGG maps IDs and descriptions to the console
                         (so you may pick the ones you want!)
 ```
-
-To run KEGGCharter, an input file must be supplied - see "Example" section - and the columns with genomic and/or transcriptomic information as well. Output directory is not mandatory, but may help find results.
-```
-python kegg_charter.py -f input_file.xlsx -o output_folder -mgc mg_column1,mg_column2 -mtc mt_column1,mt_column2 ...
-```
-
-## Example
-
-An example input file is available when downloading the GitHub repository. Inserting the KEGG IDs and genomic and transcriptomic quantifications in this file will allow to use KEGGCharter with no errors... in principle.
-
-## Outputs
-
-KEGGCharter produces a table from the inputed data with two new columns - KO (KEGG Charter) and EC number (KEGG Charter) - containing the results of conversion of KEGG IDs to KOs and KOs to EC numbers, respectively. This file is saved as KEGGCharter_results in the output directory. 
-KEGGCharter then represents this information in KEGG metabolic maps. If information is available as result of (meta)genomics analysis, KEGGCharter will localize the boxes whose functions are present in the organisms' genomes, mapping their genomic potential. If (meta)transcriptomics data is available, KEGGCharter will consider the sample as a whole, measuring gene expression and performing a multi-sample comparison for each function in the metabolic maps.
-* maps with genomic information are identified with the prefix "potential_" from genomic potential (figure 1).
-
-![ScreenShot](potential_Methane_metabolism.png)
-Figure 1 - KEGG metabolic map of methane metabolism, with identified taxa for each function from a simulated dataset.
-
-* maps with transcriptomic information are identified with the prefix "differential_" from differential expression (figure 2).
-
-![ScreenShot](differential_Methane_metabolism.png)
-Figure 2 - KEGG metabolic map of methane metabolism, with differential analysis of quantified expression for each function from a simulated dataset.

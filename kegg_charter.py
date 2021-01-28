@@ -11,11 +11,9 @@ import re
 import subprocess
 import sys
 from io import StringIO
-from itertools import product
 from time import gmtime, strftime
 import time
 import matplotlib.pyplot as plt
-import traceback
 from Bio.KEGG.REST import kegg_link, kegg_list, kegg_get
 from matplotlib import colors, cm
 from progressbar import ProgressBar
@@ -24,7 +22,7 @@ from Bio.KEGG.KGML import KGML_parser
 
 from kegg_pathway_map import KEGGPathwayMap
 
-__version__ = "0.1.2"
+__version__ = "0.1.3"
 
 
 def get_arguments():
@@ -36,8 +34,8 @@ def get_arguments():
                         default='KEGGCharter_results')
     parser.add_argument("--tsv", action="store_true", default=False,
                         help="Results will be outputed in TSV format (and not EXCEL).")
-    #parser.add_argument("-t", "--threads", type=str, default=str(multiprocessing.cpu_count() - 2),
-    #                    help="Number of threads for reCOGnizer to use. Default is number of CPUs available minus 2.")
+    parser.add_argument("-rd", "--resources-directory", type=str, default=sys.path[0],
+                        help="Directory for storing KGML and CSV files.")
     parser.add_argument("-mm", "--metabolic-maps", type=str,
                         help="IDs of metabolic maps to output",
                         default=','.join(KEGGCharter_prokaryotic_maps()))
@@ -488,41 +486,79 @@ def write_kgml(mmap, out_dir):
             f.write(data)
 
 
-def write_kgmls(mmaps, out_dir):
+def write_kgmls(mmaps, out_dir, max_tries=3):
     print('[{}] maps inputted'.format(len(mmaps)))
     maps_done = [filename.split('/map')[-1].rstrip('.xml') for filename in glob.glob('{}/*.xml'.format(out_dir))]
-    print('[{}] maps already obtained'.format(len(maps_done)))
+    print('[{}] KGMLs already obtained'.format(len(maps_done)))
     mmaps = [map for map in mmaps if map not in maps_done]
-
-    failed = list()
-    i = 0
+    i = 1
     for mmap in mmaps:
-        print('[{}/{}] Obtaining KGML for [{}]'.format(i, len(mmaps), mmap))
-        try:
-            write_kgml(mmap, out_dir)
-            print('[{}]: success'.format(mmap))
-        except:
-            failed.append(mmap)
-            print('[{}]: failure'.format(mmap))
+        print('[{}/{}] Obtaining KGML for: {}'.format(i, len(mmaps), mmap))
+        tries = 0
+        done = False
+        while tries < max_tries and not done:
+            try:
+                write_kgml(mmap, out_dir)
+                done = True
+                print('[{}]: success'.format(mmap))
+            except:
+                if os.path.isfile('{}/map{}.xml'.format(out_dir, mmap)):
+                    os.remove('{}/map{}.xml'.format(out_dir, mmap))
+                tries += 1
+                print('[{}]: failure'.format(mmap))
         i += 1
 
-    with open('{}/failed_maps.txt'.format(out_dir), 'w') as f:
-        f.write('\n'.join(failed))
+
+def set_text_boxes_kgml(kgml_filename):
+    handler = KGML_parser.read(open(kgml_filename))
+    # Set text in boxes to EC numbers
+    pbar = ProgressBar()
+    with open(kgml_filename.replace('xml', 'csv'), 'w') as f:
+        for ortholog_rec in pbar(handler.orthologs):
+            lines = list()
+            kos = ortholog_rec.name.split()
+            lines += kegg_link("enzyme", kos).read().split('\n')
+            ecs = [line.split('\t')[1] for line in lines if len(line) > 0]
+            f.write('{}\n'.format(','.join(ecs)))
 
 
-def chart_map(mmap, data, output=None, ko_column=None, ec_column=None, taxa_column=None, dic_colors=None,
+def set_text_boxes_kgmls(mmaps, out_dir, max_tries=3):
+    maps_done = [filename.split('/map')[-1].rstrip('.csv') for filename in glob.glob('{}/*.csv'.format(out_dir))]
+    print("[{}] maps already have boxes' text set".format(len(maps_done)))
+    mmaps = [map for map in mmaps if map not in maps_done]
+
+    i = 1
+    for mmap in mmaps:
+        print('[{}/{}] Getting EC numbers for: {}'.format(i, len(mmaps), mmap))
+        tries = 0
+        done = False
+        while tries < max_tries and not done:
+            try:
+                set_text_boxes_kgml('{}/map{}.xml'.format(out_dir, mmap))
+                done = True
+            except:
+                print('\nFailed for map. Attempt: {}'.format(tries + 1))
+                if os.path.isfile('{}/map{}.csv'.format(out_dir, mmap)):
+                    os.remove('{}/map{}.csv'.format(out_dir, mmap))
+                tries += 1
+                time.sleep(10)
+        i += 1
+
+
+def chart_map(mmap, ec_filename, data, output=None, ko_column=None, ec_column=None, taxa_column=None, dic_colors=None,
               genomic_columns=None, transcriptomic_columns=None):
     timed_message('Handling pathway: {}'.format(mmap.title))
     if genomic_columns:  # when not set is None
-        kegg_pathway_map = KEGGPathwayMap(pathway=mmap)
+        kegg_pathway_map = KEGGPathwayMap(pathway=mmap, ec_filename=ec_filename)
         genomic_potential_taxa(
             kegg_pathway_map, data, genomic_columns, dic_colors, ko_column, taxa_column=taxa_column,
             output_basename=output + '/potential')
     if transcriptomic_columns:  # when not set is None
-        kegg_pathway_map = KEGGPathwayMap(pathway=mmap)
+        kegg_pathway_map = KEGGPathwayMap(pathway=mmap, ec_filename=ec_filename)
         differential_expression_sample(
             kegg_pathway_map, data, transcriptomic_columns, ko_column, output_basename=output + '/differential',
             log=False)
+    plt.close()
 
 
 def main():
@@ -545,9 +581,9 @@ def main():
 
     # Begin dat chart magic
     metabolic_maps = args.metabolic_maps.split(',')
-    timed_message('Creating KEGG Pathway representations for {} metabolic pathways.'.format(len(
-        metabolic_maps)))
-    write_kgmls(metabolic_maps, sys.path[0])
+    timed_message('Creating KEGG Pathway representations for {} metabolic pathways.'.format(len(metabolic_maps)))
+    write_kgmls(metabolic_maps, args.resources_directory)
+    set_text_boxes_kgmls(metabolic_maps, args.resources_directory)
 
     # Set colours for taxa if MG data is present
     if hasattr(args, 'genomic_columns'):
@@ -566,20 +602,12 @@ def main():
     if args.transcriptomic_columns:
         args.transcriptomic_columns = args.transcriptomic_columns.split(',')
 
-    i = 1
-    failed_maps = list()
-    differential_no_kos = list()
-
-    # For each metabolic map, will chart genomic potential and differential expression if MG and MT data are available, respectively
-
-    pathways = [KGML_parser.read(open('{}/map{}.xml'.format(sys.path[0], mmap))) for mmap in metabolic_maps]
-    for pathway in pathways:
-        #try:
-        chart_map(pathway, data, args.output, ko_column, ec_column,
+    for mmap in metabolic_maps:
+        pathway = KGML_parser.read(open('{}/map{}.xml'.format(sys.path[0], mmap)))
+        ec_filename = '{}/map{}.csv'.format(sys.path[0], mmap)
+        chart_map(pathway, ec_filename, data, args.output, ko_column, ec_column,
                          args.taxa_column, dic_colors, args.genomic_columns,
                          args.transcriptomic_columns)
-        #except:
-        #    failed_maps.append(mmap)
 
     '''
     
@@ -588,14 +616,6 @@ def main():
                               args.genomic_columns, args.transcriptomic_columns,
                               '{}/failed_maps.txt'.format(args.output)) for handler in pathways])
     '''
-    failed_maps_filename = args.output + '/failed_maps.txt'
-    no_kos_filename = args.output + '/no_kos.txt'
-    print('{} maps could not be loaded. You can see which ones at {}'.format(
-        len(failed_maps), failed_maps_filename))
-    open(failed_maps_filename, 'w').write('\n'.join(failed_maps))
-    print('{} maps had no KOs attributed to them. You can see which ones at {}'.format(
-        len(differential_no_kos), no_kos_filename))
-    open(no_kos_filename, 'w').write('\n'.join(differential_no_kos))
 
 
 if __name__ == '__main__':

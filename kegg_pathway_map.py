@@ -97,14 +97,14 @@ class KEGGPathwayMap:
     This class retrieves and manipulates KEGG metabolic maps from KEGG Pathway
     """
 
-    def __init__(self, pathway):
+    def __init__(self, pathway, ec_filename):
         """
         Initialize object
         :param data: pd.DataFrame - data from MOSCA analysis
         :param kgml_file: (str) - KGML filename
         """
         self.pathway = pathway
-        self.set_pathway()
+        self.set_pathway(ec_filename)
 
     ############################################################################
     ####                              Helper                                ####
@@ -114,11 +114,13 @@ class KEGGPathwayMap:
     ####                            Sets                                    ####
     ############################################################################
 
-    def set_pathway(self):
+    def set_pathway(self, ec_filename):
         """
         Set pathway with Kegg Pathway ID
         """
         self.ko_boxes = dict()
+        handler = open(ec_filename)
+        ec_list = handler.read().split('\n')
         for i in range(len(self.pathway.orthologs)):
             set_bgcolor(self.pathway.orthologs[i], "#ffffff")  # set all boxes to white
             # self.set_fgcolor(self.pathway.orthologs[i], "#ffffff")             # This might be helpful in the future, if an additional layer of marking is needed
@@ -129,19 +131,13 @@ class KEGGPathwayMap:
                     self.ko_boxes[ortholog] = list()
                 self.ko_boxes[ortholog].append(i)  # {'K16157':[0,13,432], 'K16158':[4,13,545]}
 
-        #print('finished 1')
-        # Set text in boxes to EC numbers
-        for ortholog_rec in self.pathway.orthologs:
-            lines = list()
-            kos = ortholog_rec.name.split()
-            lines += kegg_link("enzyme", kos).read().split('\n')
-            ecs = [line.split('\t')[1] for line in lines if len(line) > 0]
+            # Set name as EC number
+            ecs = ec_list[i].split(',')
             if len(ecs) > 0:
-                ortholog_rec.graphics[0].name = max(set(ecs), key=ecs.count).upper()
+                self.pathway.orthologs[i].graphics[0].name = max(set(ecs), key=ecs.count).upper()
             else:
-                ortholog_rec.graphics[0].name = kos[0][3:]
+                self.pathway.orthologs[i].graphics[0].name = orthologs_in_box[0]
 
-        #print('finished 2')
     ############################################################################
     ####                          Operations                                ####
     ############################################################################
@@ -164,7 +160,6 @@ class KEGGPathwayMap:
                    label_compounds=compounds,
                    label_maps=maps,
                    label_reaction_entries=reactions).draw(filename)
-        #print('finished writing pdf')
 
     def pathway_box_list(self, taxa_in_box, dic_colors, maxshared=10):
         """
