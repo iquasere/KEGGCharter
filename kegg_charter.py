@@ -22,7 +22,7 @@ from Bio.KEGG.KGML import KGML_parser
 
 from kegg_pathway_map import KEGGPathwayMap
 
-__version__ = "0.1.3"
+__version__ = "0.2.0"
 
 
 def get_arguments():
@@ -45,12 +45,21 @@ def get_arguments():
                         help="Names of columns with transcriptomics quantification")
     parser.add_argument("-tls", "--taxa-list", type=str,
                         help="List of taxa to represent in genomic potential charts (comma separated)")  # TODO - must be tested
-    parser.add_argument("-not", "--number-of-taxa", type=str,
-                        help="Number of taxa to represent in genomic potential charts (comma separated)",
-                        default='10')
+    parser.add_argument("-not", "--number-of-taxa", type=str, default='10',
+                        help="Number of taxa to represent in genomic potential charts (comma separated)")
     parser.add_argument("-keggc", "--kegg-column", type=str, help="Column with KEGG IDs.")
     parser.add_argument("-koc", "--ko-column", type=str, help="Column with KOs.")
     parser.add_argument("-ecc", "--ec-column", type=str, help="Column with EC numbers.")
+    parser.add_argument("-iq", "--input-quantification", action="store_true",
+                        help="If input table has no quantification, will create a mock quantification column")
+    parser.add_argument("-it", "--input-taxonomy", type=str,
+                        help="If no taxonomy column exists and there is only one taxon in question. Can be used in two "
+                             "ways:"
+                             "1. Call with a parameter: --input-taxonomy Methanobacterium formicicum"
+                             "2. Call with no parameters: will read from the command line")
+    # TODO - test this argument without UniProt shenanigans
+    parser.add_argument("-tc", "--taxa-column", type=str, default='Taxonomic lineage (GENUS)',
+                        help="Column with the taxa designations to represent with KEGGChart")
     parser.add_argument("--resume", action="store_true", default=False,
                         help="Data inputed has already been analyzed by KEGGCharter.")
     parser.add_argument('-v', '--version', action='version', version='KEGGCharter ' + __version__)
@@ -58,9 +67,6 @@ def get_arguments():
     required_named = parser.add_argument_group('required named arguments')
     required_named.add_argument("-f", "--file", type=str, required=True,
                                 help="TSV or EXCEL table with information to chart")
-    parser.add_argument("-tc", "--taxa-column", type=str, required=True,
-                        default='Taxonomic lineage(GENUS)',
-                        help="Column with the taxa designations to represent with KEGGChart")  # TODO - test this argument without UniProt shenanigans
 
     special_functions = parser.add_argument_group('Special functions')
     special_functions.add_argument("--show-available-maps",
@@ -136,120 +142,98 @@ def taxa_colors(hex_values=None, ncolor=1):
 
 
 # Conversion functions
-def keggid2ko(kegg_ids, kegg_column, step=150):
+def id2id(input_ids, column, output_column, output_ids_type, step=150):
     """
     Converts KEGG_ID genes to Ortholog KO ID from KEGG
-    :param KEGG_ID: (list) - KEGG ID genes
+    :param kegg_ids: (list) - KEGG ID genes
+    :param kegg_column: (str) - name of column to return
     :param step: (int) - will convert "step" KEGG IDs at a time
     :return: (list) - (list,list) - KEGG ID genes converted and ko IDs
     """
-    result = list()
+    result = pd.DataFrame(columns=[column, output_column])
     pbar = ProgressBar()
-    for i in pbar(range(0, len(kegg_ids) - step, step)):
+    for i in pbar(range(0, len(input_ids), step)):
+        j = min(i + step, len(input_ids))
         try:
-            result += kegg_link("ko", kegg_ids[i:i + step]).read().split("\n")[:-1]
+            result = pd.concat([result, pd.read_csv(
+                kegg_link(output_ids_type, input_ids[i:j]), sep='\t', names=[column, output_column])])
         except:
-            print('KEGG ID to KO broke at index ' + str(i))
-            result = [[part[0] + ';', part[1].strip('ko:')] for part in
-                      [relation.split('\t') for relation in result]]
-            return pd.DataFrame(result, columns=[kegg_column, 'KO (KEGG Charter)'])
-    result += kegg_link("ko", kegg_ids[len(kegg_ids) - step:]).read().split("\n")[:-1]
-    result = [[part[0] + ';', part[1].strip('ko:')] for part in
-              [relation.split('\t') for relation in result]]
-    return pd.DataFrame(result, columns=[kegg_column, 'KO (KEGG Charter)'])
+            print('IDs conversion broke at index: {}'.format(i))
+    if output_ids_type == 'ko':
+        result[output_column] = result[output_column].apply(lambda x: x.strip('ko:'))
+        result[column] = result[column].apply(lambda x: x.strip('ec:'))
+    elif output_ids_type == 'enzyme':
+        result[column] = result[column].apply(lambda x: x.strip('ko:'))
+        result[output_column] = result[output_column].apply(lambda x: x.strip('ec:'))
+    return result
 
 
-def ko2ec(kos, ko_column_name, step=150):
-    """
-    Converts KOs to EC numbers
-    :param kos: list of kegg orthologs
-    :return: dic associating ortholog kegg id with list
-    of assotiated EC numbers
-    """
-    result = list()
-    pbar = ProgressBar()
-    for i in pbar(range(0, len(kos), step)):
-        try:
-            result += kegg_link("enzyme", kos[i:i + step]).read().split("\n")[:-1]
-        except:
-            print('KO to EC number broke at index ' + str(i))
-            result = [relation.split('\t') for relation in result]
-            return list(map(list, zip(*result)))
-    result += kegg_link("enzyme", kos[len(kos) - step:]).read().split("\n")[:-1]
-    result = [[part[0].strip('ko:'), part[1].upper()] for part in
-              [relation.split('\t') for relation in result]]
-    return pd.DataFrame(result, columns=[ko_column_name, 'EC number (KEGG Charter)'])
-
-
-def ec2ko(ecnumbers, ec_column_name, step=150):
-    """
-    Converts KOs to EC numbers
-    :param kos: list of kegg orthologs
-    :return: dic associating ortholog kegg id with list
-    of assotiated EC numbers
-    """
-    result = list()
-    pbar = ProgressBar()
-    for i in pbar(range(0, len(ecnumbers), step)):
-        try:
-            result += kegg_link("ko", ecnumbers[i:i + step]).read().split("\n")[:-1]
-        except:
-            print('KO to EC number broke at index ' + str(i))
-            result = [relation.split('\t') for relation in result]
-            return list(map(list, zip(*result)))
-    result += kegg_link("enzyme", ecnumbers[len(ecnumbers) - step:]).read().split("\n")[:-1]
-    result = [[part[0], part[1].strip('ko:')] for part in
-              [relation.split('\t') for relation in result[:-1]]]
-    print(pd.DataFrame(result, columns=[ec_column_name, 'KO (KEGG Charter)']))
-    return pd.DataFrame(result, columns=[ec_column_name, 'KO (KEGG Charter)'])
+def ids_interconversion(data, column, ids_type='kegg'):
+    ids = list(set(data[data[column].notnull()][column]))
+    message = 'Converting %i %s to %s through the KEGG API.'
+    if ids_type == 'kegg':
+        # sometimes Kegg IDs come as mfc:BRM9_0145;mfi:DSM1535_1468; (e.g. from UniProt IDs mapping).
+        # Should be no problem since both IDs likely will always represent same functions
+        trimmed_ids = [ide.split(';')[0] for ide in ids]
+        relational = pd.DataFrame([ids, trimmed_ids]).transpose()
+        timed_message(message % (len(ids), 'KEGG IDs', 'KOs'))
+        new_ids = id2id(trimmed_ids, column, 'KO (KEGGCharter)', 'ko')
+        new_ids = pd.merge(new_ids, relational, left_on=column, right_on=1)  # mcj:MCON_3003;   mcj:MCON_3003
+        del new_ids[column]  # mcj:MCON_3003    K07486  mcj:MCON_3003;  mcj:MCON_3003
+        del new_ids[1]
+        new_ids.columns = ['KO (KEGGCharter)', column]
+    elif ids_type == 'ko':
+        timed_message(message % (len(ids), 'KOs', 'EC numbers'))
+        new_ids = id2id(ids, column, 'EC number (KEGGCharter)', 'enzyme')
+    elif ids_type == 'ec':
+        ids = ['ec:{}'.format(ide) for ide in ids]
+        timed_message(message % (len(ids), 'EC numbers', 'KOs'))
+        new_ids = id2id(ids, column, 'KO (KEGGCharter)', 'ko')
+    return pd.merge(data, new_ids, on=column, how='left')
 
 
 def get_cross_references(data, kegg_column=None, ko_column=None, ec_column=None):
     # KEGG ID to KO -> if KO column is not set, KEGGCharter will get them through the KEGG API
-    if not ko_column:
-        if kegg_column:
-            kegg_ids = data[data[kegg_column].notnull()][kegg_column]
-            kegg_ids = [ide.split(';')[0] for ide in
-                        kegg_ids]  # TODO - sometimes Kegg IDs come as mfc:BRM9_0145;mfi:DSM1535_1468; (e.g. from UniProt IDs mapping). Should be no problem since both IDs should always be same function
-            timed_message('Converting {} KEGG IDs to KOs through the KEGG API.'.format(len(kegg_ids)))
-            kos = keggid2ko(kegg_ids, kegg_column)
-            data = pd.merge(data, kos, on=kegg_column, how='left')
-        elif ec_column:
-            ec_numbers = data[data[ec_column].notnull()][ec_column]
-            ec_numbers = ['ec:{}'.format(ide) for ide in ec_numbers]
-            timed_message('Converting {} EC numbers to KOs through the KEGG API.'.format(len(ec_numbers)))
-            kos = ec2ko(ec_numbers, ec_column)
-            ec_column = ec_column
-            kos[ec_column] = [ide[3:] for ide in kos[ec_column]]
-            data = pd.merge(data, kos, on=ec_column, how='left')
-        else:
-            exit('Need to specify a column with either KEGG IDs, KOs or EC numbers!')
-        ko_column = 'KO (KEGG Charter)'
-    else:
-        ko_column = ko_column
-    data[ko_column] = data[ko_column].apply(lambda x: x.rstrip(';') if type(
-        x) != float else x)  # If coming from UniProt ID mapping, KOs will be in the form KXXXXX;
+    if kegg_column:
+        data = ids_interconversion(data, column=kegg_column, ids_type='kegg')
+        print(data)
+        data = ids_interconversion(data, column='KO (KEGGCharter)', ids_type='ko')
+    if ko_column:
+        data = ids_interconversion(data, column=ko_column, ids_type='ko')
+        data = ids_interconversion(data, column='EC number (KEGGCharter)', ids_type='ec')
+    if ec_column:
+        data = ids_interconversion(data, column=ec_column, ids_type='ec')
+        data = ids_interconversion(data, column='KO (KEGGCharter)', ids_type='ko')
+    if not (kegg_column or ko_column or ec_column):
+        exit('Need to specify a column with either KEGG IDs, KOs or EC numbers!')
+    return data
+
+
+def condense_data(data, main_column):
+    onlykos = data[data['KO (KEGGCharter)'].notnull() & (data['EC number (KEGGCharter)'].isnull())]
+    onlykos = onlykos.groupby(main_column).agg({'KO (KEGGCharter)': lambda x: ','.join(set(x))}).reset_index()
+    onlykos['EC number (KEGGCharter)'] = [np.nan] * len(onlykos)
+    wecs = data[data['EC number (KEGGCharter)'].notnull()]
+    wecs = wecs.groupby(main_column).agg({'KO (KEGGCharter)': lambda x: ','.join(set(x)),
+                                          'EC number (KEGGCharter)': lambda x: ','.join(set(x))}).reset_index()
+    del data['KO (KEGGCharter)']
+    del data['EC number (KEGGCharter)']
+    newinfo = pd.concat([onlykos, wecs])
+    return pd.merge(data, newinfo, on=main_column, how='left').drop_duplicates()
+
+
+def prepare_data_for_charting(data, ko_column='KO (KEGGCharter)', ko_from_uniprot=False):
+    if ko_from_uniprot:
+        # If coming from UniProt ID mapping, KOs will be in the form "KXXXXX;"
+        data[ko_column] = data[ko_column].apply(lambda x: x.rstrip(';') if type(x) != float else x)
 
     # Expand KOs column if some elements are in the form KO1,KO2,...
     data[ko_column] = [ko.split(',') if type(ko) != float else ko for ko in data[ko_column]]
-    wkos = data[data[ko_column].notnull()]
     nokos = data[data[ko_column].isnull()]
+    wkos = data[data[ko_column].notnull()]
     wkos = expand_by_list_column(wkos, column=ko_column)
     data = pd.concat([wkos, nokos])
-
-    # KO to EC number
-    kos = data[data[ko_column].notnull()][ko_column].tolist()
-    timed_message('Retrieving EC numbers from {} KOs.'.format(len(kos)))
-    ecs = ko2ec(kos, ko_column)
-    data = pd.merge(data, ecs, on=ko_column, how='left')
-
-    notnull = data[data['EC number (KEGG Charter)'].notnull()]
-    notnull = notnull.groupby('Entry').agg(
-        {'KO (KEGG Charter)': lambda x: ','.join(set(x)), 'EC number (KEGG Charter)': lambda x: ','.join(set(x))}
-    ).reset_index()
-    results = data[data.columns[:-2]].drop_duplicates()
-    results = pd.merge(results, notnull, on='Entry', how='left')
-    return results
+    return data
 
 
 # Get metabolic maps from KEGG Pathway
@@ -366,8 +350,7 @@ def create_potential_legend(colors, labels, filename):
 
 
 def genomic_potential_taxa(kegg_pathway_map, data, samples, dic_colors, ko_column,
-                           taxa=None, taxa_column='Taxonomic lineage (GENUS)',
-                           output_basename=None, maxshared=10):
+                           taxa_column='Taxonomic lineage (GENUS)', output_basename=None):
     """
     Represents the genomic potential of the dataset for a certain taxa level,
     by coloring each taxon with a unique color
@@ -397,7 +380,8 @@ def genomic_potential_taxa(kegg_pathway_map, data, samples, dic_colors, ko_colum
                     else:
                         box2taxon[box] = [taxon]
 
-    # for every box with KOs identified from the most abundant taxa, sub-boxes are created with colours of the corresponding taxa
+    # for every box with KOs identified from the most abundant taxa, sub-boxes are created with colours of the
+    # corresponding taxa
     kegg_pathway_map.pathway_box_list(box2taxon, dic_colors)
 
     # boxes with KOs identified but not from the most abundant taxa are still identified
@@ -409,7 +393,7 @@ def genomic_potential_taxa(kegg_pathway_map, data, samples, dic_colors, ko_colum
             for box in kegg_pathway_map.ko_boxes[ortholog]:
                 if box not in box2taxon.keys() and box not in grey_boxes:
                     grey_boxes.append(box)
-    kegg_pathway_map.grey_boxes(grey_boxes)  # TODO - boxes should have EC number as name
+    kegg_pathway_map.grey_boxes(grey_boxes)
 
     name = kegg_pathway_map.pathway.name.split(':')[-1]
     name_pdf = '{}_{}.pdf'.format(output_basename, name)
@@ -419,7 +403,8 @@ def genomic_potential_taxa(kegg_pathway_map, data, samples, dic_colors, ko_colum
     if len(grey_boxes) > 0:
         dic_colors["Other taxa"] = "#7c7272"
 
-    # TODO - legend should be ajusted for the maps - otherwise, makes no sense to have one legend for each map - they all become the same, except for "Other taxa"
+    # TODO - legend should be ajusted for the maps - otherwise, makes no sense to have one legend for each map -
+    #  they all become the same, except for "Other taxa"
     create_potential_legend(dic_colors.values(), dic_colors.keys(),
                             name_pdf.replace('.pdf', '_legend.png'))
 
@@ -428,9 +413,9 @@ def genomic_potential_taxa(kegg_pathway_map, data, samples, dic_colors, ko_colum
 
 
 def differential_colorbar(dataframe, filename):
-    FIGSIZE = (2, 3)
+    fig_size = (2, 3)
     mpb = plt.pcolormesh(dataframe, cmap='coolwarm')
-    fig, ax = plt.subplots(figsize=FIGSIZE)
+    fig, ax = plt.subplots(figsize=fig_size)
     plt.colorbar(mpb, ax=ax)
     ax.remove()
     plt.savefig(filename, bbox_inches='tight')
@@ -450,8 +435,8 @@ def differential_expression_sample(kegg_pathway_map, data, samples, ko_column,
     """
     df = data.groupby(ko_column)[samples + [ko_column]].sum()
     df = df[df.any(axis=1)]
-    df['Boxes'] = [kegg_pathway_map.ko_boxes[ko] if ko in
-                                                    kegg_pathway_map.ko_boxes.keys() else np.nan for ko in df.index]
+    df['Boxes'] = [
+        kegg_pathway_map.ko_boxes[ko] if ko in kegg_pathway_map.ko_boxes.keys() else np.nan for ko in df.index]
     df = df[df['Boxes'].notnull()]
     df = expand_by_list_column(df, column='Boxes')
     if len(df) == 0:
@@ -545,7 +530,7 @@ def set_text_boxes_kgmls(mmaps, out_dir, max_tries=3):
         i += 1
 
 
-def chart_map(mmap, ec_filename, data, output=None, ko_column=None, ec_column=None, taxa_column=None, dic_colors=None,
+def chart_map(mmap, ec_filename, data, output=None, ko_column=None, taxa_column=None, dic_colors=None,
               genomic_columns=None, transcriptomic_columns=None):
     timed_message('Handling pathway: {}'.format(mmap.title))
     if genomic_columns:  # when not set is None
@@ -572,12 +557,28 @@ def main():
     timed_message('Data successfully read.')
 
     if not args.resume:
-        results = get_cross_references(
+        data = get_cross_references(
             data, kegg_column=args.kegg_column, ko_column=args.ko_column, ec_column=args.ec_column)
-        write_results(results, args.output, output_type=('tsv' if args.tsv else 'excel'))
+
+        main_column = (args.kegg_column if args.kegg_column is not None else
+                       args.ko_column if args.ko_column is not None else args.ec_column)
+        data = condense_data(data, main_column)
+
+        write_results(data, args.output, output_type=('tsv' if args.tsv else 'excel'))
         timed_message('Results saved to {}/KEGGCharter_results.{}'.format(args.output, 'tsv' if args.tsv else 'xlsx'))
-    ko_column = args.ko_column if args.ko_column else 'KO (KEGG Charter)'
-    ec_column = args.ec_column if args.ec_column else 'EC number (KEGG Charter)'
+
+    ko_column = 'KO (KEGGCharter)'  # TODO - set ko_column to user defined value
+
+    data = prepare_data_for_charting(data, ko_column=ko_column)
+
+    if args.input_quantification:
+        data['Quantification (KEGGCharter)'] = [1] * len(data)
+        args.genomic_columns = 'Quantification (KEGGCharter)'
+
+    if hasattr(args, "input_taxonomy"):
+        data['Taxon (KEGGCharter)'] = [args.input_taxonomy] * len(data)
+        args.taxa_column = 'Taxon (KEGGCharter)'
+        args.taxa_list = args.input_taxonomy
 
     # Begin dat chart magic
     metabolic_maps = args.metabolic_maps.split(',')
@@ -605,10 +606,9 @@ def main():
     for mmap in metabolic_maps:
         pathway = KGML_parser.read(open('{}/map{}.xml'.format(sys.path[0], mmap)))
         ec_filename = '{}/map{}.csv'.format(sys.path[0], mmap)
-        chart_map(pathway, ec_filename, data, args.output, ko_column, ec_column,
-                         args.taxa_column, dic_colors, args.genomic_columns,
-                         args.transcriptomic_columns)
-
+        chart_map(pathway, ec_filename, data, output=args.output, ko_column=ko_column,
+                  taxa_column=args.taxa_column, dic_colors=dic_colors,
+                  genomic_columns=args.genomic_columns, transcriptomic_columns=args.transcriptomic_columns)
     '''
     
     with multiprocessing.Pool() as p:
