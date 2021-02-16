@@ -196,7 +196,6 @@ def get_cross_references(data, kegg_column=None, ko_column=None, ec_column=None)
     # KEGG ID to KO -> if KO column is not set, KEGGCharter will get them through the KEGG API
     if kegg_column:
         data = ids_interconversion(data, column=kegg_column, ids_type='kegg')
-        print(data)
         data = ids_interconversion(data, column='KO (KEGGCharter)', ids_type='ko')
     if ko_column:
         data = ids_interconversion(data, column=ko_column, ids_type='ko')
