@@ -53,10 +53,7 @@ def get_arguments():
     parser.add_argument("-iq", "--input-quantification", action="store_true",
                         help="If input table has no quantification, will create a mock quantification column")
     parser.add_argument("-it", "--input-taxonomy", type=str,
-                        help="If no taxonomy column exists and there is only one taxon in question. Can be used in two "
-                             "ways:"
-                             "1. Call with a parameter: --input-taxonomy Methanobacterium formicicum"
-                             "2. Call with no parameters: will read from the command line")
+                        help="If no taxonomy column exists and there is only one taxon in question.")
     # TODO - test this argument without UniProt shenanigans
     parser.add_argument("-tc", "--taxa-column", type=str, default='Taxonomic lineage (GENUS)',
                         help="Column with the taxa designations to represent with KEGGChart")
@@ -574,7 +571,7 @@ def main():
         data['Quantification (KEGGCharter)'] = [1] * len(data)
         args.genomic_columns = 'Quantification (KEGGCharter)'
 
-    if hasattr(args, "input_taxonomy"):
+    if args.input_taxonomy:
         data['Taxon (KEGGCharter)'] = [args.input_taxonomy] * len(data)
         args.taxa_column = 'Taxon (KEGGCharter)'
         args.taxa_list = args.input_taxonomy
