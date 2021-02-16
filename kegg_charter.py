@@ -22,7 +22,7 @@ from Bio.KEGG.KGML import KGML_parser
 
 from kegg_pathway_map import KEGGPathwayMap
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 
 def get_arguments():
@@ -604,8 +604,8 @@ def main():
         args.transcriptomic_columns = args.transcriptomic_columns.split(',')
 
     for mmap in metabolic_maps:
-        pathway = KGML_parser.read(open('{}/map{}.xml'.format(sys.path[0], mmap)))
-        ec_filename = '{}/map{}.csv'.format(sys.path[0], mmap)
+        pathway = KGML_parser.read(open('{}/map{}.xml'.format(args.resources_directory, mmap)))
+        ec_filename = '{}/map{}.csv'.format(args.resources_directory, mmap)
         chart_map(pathway, ec_filename, data, output=args.output, ko_column=ko_column,
                   taxa_column=args.taxa_column, dic_colors=dic_colors,
                   genomic_columns=args.genomic_columns, transcriptomic_columns=args.transcriptomic_columns)
