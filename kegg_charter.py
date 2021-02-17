@@ -2,7 +2,6 @@
 
 import PIL
 import argparse
-import multiprocessing
 import numpy as np
 import os
 import pandas as pd
@@ -22,7 +21,7 @@ from Bio.KEGG.KGML import KGML_parser
 
 from kegg_pathway_map import KEGGPathwayMap
 
-__version__ = "0.2.1"
+__version__ = "0.2.2"
 
 
 def get_arguments():
@@ -526,16 +525,16 @@ def set_text_boxes_kgmls(mmaps, out_dir, max_tries=3):
         i += 1
 
 
-def chart_map(mmap, ec_filename, data, output=None, ko_column=None, taxa_column=None, dic_colors=None,
+def chart_map(mmap, ec_list, data, output=None, ko_column=None, taxa_column=None, dic_colors=None,
               genomic_columns=None, transcriptomic_columns=None):
-    timed_message('Handling pathway: {}'.format(mmap.title))
+
     if genomic_columns:  # when not set is None
-        kegg_pathway_map = KEGGPathwayMap(pathway=mmap, ec_filename=ec_filename)
+        kegg_pathway_map = KEGGPathwayMap(pathway=mmap, ec_list=ec_list)
         genomic_potential_taxa(
             kegg_pathway_map, data, genomic_columns, dic_colors, ko_column, taxa_column=taxa_column,
             output_basename=output + '/potential')
     if transcriptomic_columns:  # when not set is None
-        kegg_pathway_map = KEGGPathwayMap(pathway=mmap, ec_filename=ec_filename)
+        kegg_pathway_map = KEGGPathwayMap(pathway=mmap, ec_list=ec_list)
         differential_expression_sample(
             kegg_pathway_map, data, transcriptomic_columns, ko_column, output_basename=output + '/differential',
             log=False)
@@ -599,10 +598,25 @@ def main():
     if args.transcriptomic_columns:
         args.transcriptomic_columns = args.transcriptomic_columns.split(',')
 
-    for mmap in metabolic_maps:
-        pathway = KGML_parser.read(open('{}/map{}.xml'.format(args.resources_directory, mmap)))
-        ec_filename = '{}/map{}.csv'.format(args.resources_directory, mmap)
-        chart_map(pathway, ec_filename, data, output=args.output, ko_column=ko_column,
+    for i in range(len(metabolic_maps)):
+        pathway = KGML_parser.read(open('{}/map{}.xml'.format(args.resources_directory, metabolic_maps[i])))
+
+        with open('{}/map{}.csv'.format(args.resources_directory, metabolic_maps[i])) as f:
+            ec_list = f.read().split('\n')
+
+        if len(pathway.orthologs) != len(ec_list) - 1:  # -1 because of newline at the end
+            print('Number of ECs was different from the number of orthologs for map [{}]. '
+                  'Will retrieve the right files now.'.format(metabolic_maps[i]))
+
+            write_kgml(metabolic_maps[i], args.resources_directory)
+            set_text_boxes_kgml('{}/map{}.xml'.format(args.resources_directory, metabolic_maps[i]))
+
+            pathway = KGML_parser.read(open('{}/map{}.xml'.format(args.resources_directory, metabolic_maps[i])))
+            with open('{}/map{}.csv'.format(args.resources_directory, metabolic_maps[i])) as f:
+                ec_list = f.read().split('\n')
+
+        timed_message('[{}/{}] {}'.format(i + 1, len(metabolic_maps), pathway.title))
+        chart_map(pathway, ec_list, data, output=args.output, ko_column=ko_column,
                   taxa_column=args.taxa_column, dic_colors=dic_colors,
                   genomic_columns=args.genomic_columns, transcriptomic_columns=args.transcriptomic_columns)
     '''

@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 
 from Bio.KEGG.KGML import KGML_parser, KGML_pathway
-from Bio.KEGG.REST import kegg_link
 from Bio.Graphics.KGML_vis import KGMLCanvas
 from matplotlib import colors, cm
+import time
 
 
 def set_bgcolor(pathway_element, color):
@@ -97,23 +97,20 @@ class KEGGPathwayMap:
     This class retrieves and manipulates KEGG metabolic maps from KEGG Pathway
     """
 
-    def __init__(self, pathway, ec_filename):
+    def __init__(self, pathway, ec_list):
         """
         Initialize object
         :param data: pd.DataFrame - data from MOSCA analysis
         :param kgml_file: (str) - KGML filename
         """
         self.pathway = pathway
-        self.set_pathway(ec_filename)
+        self.set_pathway(ec_list)
 
-
-    def set_pathway(self, ec_filename):
+    def set_pathway(self, ec_list):
         """
         Set pathway with Kegg Pathway ID
         """
         self.ko_boxes = dict()
-        handler = open(ec_filename)
-        ec_list = handler.read().split('\n')
         for i in range(len(self.pathway.orthologs)):
             set_bgcolor(self.pathway.orthologs[i], "#ffffff")  # set all boxes to white
             # self.set_fgcolor(self.pathway.orthologs[i], "#ffffff")             # This might be helpful in the future, if an additional layer of marking is needed
@@ -147,12 +144,19 @@ class KEGGPathwayMap:
         :return: creates PDF file with current pathway
         """
         # TODO - check reactions parameter
-        KGMLCanvas(self.pathway,
-                   import_imagemap=imagemap,
-                   label_orthologs=orthologs,
-                   label_compounds=compounds,
-                   label_maps=maps,
-                   label_reaction_entries=reactions).draw(filename)
+        drawn = False
+        while not drawn:
+            try:
+                KGMLCanvas(self.pathway,
+                           import_imagemap=imagemap,
+                           label_orthologs=orthologs,
+                           label_compounds=compounds,
+                           label_maps=maps,
+                           label_reaction_entries=reactions).draw(filename)
+                drawn = True
+            except:
+                print('Draw failed! Waiting 10 secs...')
+                time.sleep(10)
 
     def pathway_box_list(self, taxa_in_box, dic_colors, maxshared=10):
         """
