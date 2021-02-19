@@ -1,5 +1,5 @@
 {% set name = "keggcharter" %}
-{% set version = "0.2.2" %}
+{% set version = "0.2.3" %}
 {% set sha256 = "905268158c74058228faca2b34d44eae8f84b23bfa5dee49285635cf59684d7f" %}
 
 package:

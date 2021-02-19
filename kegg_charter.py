@@ -21,7 +21,7 @@ from Bio.KEGG.KGML import KGML_parser
 
 from kegg_pathway_map import KEGGPathwayMap
 
-__version__ = "0.2.2"
+__version__ = "0.2.3"
 
 
 def get_arguments():
@@ -582,7 +582,7 @@ def main():
     set_text_boxes_kgmls(metabolic_maps, args.resources_directory)
 
     # Set colours for taxa if MG data is present
-    if hasattr(args, 'genomic_columns'):
+    if args.genomic_columns:
         args.genomic_columns = args.genomic_columns.split(',')
         if args.taxa_list is None:
             taxa = most_abundant_taxa(data, args.genomic_columns, args.taxa_column,
