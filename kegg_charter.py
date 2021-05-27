@@ -21,7 +21,7 @@ from Bio.KEGG.KGML import KGML_parser
 
 from kegg_pathway_map import KEGGPathwayMap
 
-__version__ = "0.2.3"
+__version__ = "0.2.4"
 
 
 def get_arguments():
@@ -65,10 +65,9 @@ def get_arguments():
                                 help="TSV or EXCEL table with information to chart")
 
     special_functions = parser.add_argument_group('Special functions')
-    special_functions.add_argument("--show-available-maps",
-                                   action="store_true", default=False,
-                                   help="""Outputs KEGG maps IDs and descriptions to the
-                        console (so you may pick the ones you want!)""")
+    special_functions.add_argument(
+        "--show-available-maps", action="store_true", default=False,
+        help="""Outputs KEGG maps IDs and descriptions to the console (so you may pick the ones you want!)""")
 
     args = parser.parse_args()
 
@@ -102,13 +101,13 @@ def expand_by_list_column(df, column='Pathway'):
     dictionary[column] = np.concatenate(df[column].values)
     return pd.DataFrame(dictionary)
 
-    # Functions that deal with taxonomies
-
 
 def most_abundant_taxa(data, columns, taxa_column, number_of_taxa=10):
     """
     Calculates top genus from samples
+    :param data: data
     :param columns: list of mg columns to consider for quantification of genus abundance
+    :param taxa_column: da column with da taxa
     :param number_of_taxa: number of top genus to return
     :return: list of top genus
     """
@@ -504,12 +503,12 @@ def set_text_boxes_kgml(kgml_filename):
 
 def set_text_boxes_kgmls(mmaps, out_dir, max_tries=3):
     maps_done = [filename.split('/map')[-1].rstrip('.csv') for filename in glob.glob('{}/*.csv'.format(out_dir))]
-    print("[{}] maps already have boxes' text set".format(len(maps_done)))
+    print(f"[{len(maps_done)}] maps already have boxes' text set")
     mmaps = [map for map in mmaps if map not in maps_done]
 
     i = 1
     for mmap in mmaps:
-        print('[{}/{}] Getting EC numbers for: {}'.format(i, len(mmaps), mmap))
+        print(f'[{i}/{len(mmaps)}] Getting EC numbers for: {mmap}')
         tries = 0
         done = False
         while tries < max_tries and not done:
@@ -525,18 +524,20 @@ def set_text_boxes_kgmls(mmaps, out_dir, max_tries=3):
         i += 1
 
 
-def chart_map(mmap, ec_list, data, output=None, ko_column=None, taxa_column=None, dic_colors=None,
+def chart_map(kgml_filename, ec_list, data, output=None, ko_column=None, taxa_column=None, dic_colors=None,
               genomic_columns=None, transcriptomic_columns=None):
 
     if genomic_columns:  # when not set is None
+        mmap = KGML_parser.read(open(kgml_filename))
         kegg_pathway_map = KEGGPathwayMap(pathway=mmap, ec_list=ec_list)
         genomic_potential_taxa(
             kegg_pathway_map, data, genomic_columns, dic_colors, ko_column, taxa_column=taxa_column,
-            output_basename=output + '/potential')
+            output_basename=f'{output}/potential')
     if transcriptomic_columns:  # when not set is None
+        mmap = KGML_parser.read(open(kgml_filename))
         kegg_pathway_map = KEGGPathwayMap(pathway=mmap, ec_list=ec_list)
         differential_expression_sample(
-            kegg_pathway_map, data, transcriptomic_columns, ko_column, output_basename=output + '/differential',
+            kegg_pathway_map, data, transcriptomic_columns, ko_column, output_basename=f'{output}/differential',
             log=False)
     plt.close()
 
@@ -609,14 +610,13 @@ def main():
                   'Will retrieve the right files now.'.format(metabolic_maps[i]))
 
             write_kgml(metabolic_maps[i], args.resources_directory)
-            set_text_boxes_kgml('{}/map{}.xml'.format(args.resources_directory, metabolic_maps[i]))
+            set_text_boxes_kgml('f{args.resources_directory}/map{metabolic_maps[i]}.xml')
 
-            pathway = KGML_parser.read(open('{}/map{}.xml'.format(args.resources_directory, metabolic_maps[i])))
             with open('{}/map{}.csv'.format(args.resources_directory, metabolic_maps[i])) as f:
                 ec_list = f.read().split('\n')
 
         timed_message('[{}/{}] {}'.format(i + 1, len(metabolic_maps), pathway.title))
-        chart_map(pathway, ec_list, data, output=args.output, ko_column=ko_column,
+        chart_map(f'{args.resources_directory}/map{metabolic_maps[i]}.xml', ec_list, data, output=args.output, ko_column=ko_column,
                   taxa_column=args.taxa_column, dic_colors=dic_colors,
                   genomic_columns=args.genomic_columns, transcriptomic_columns=args.transcriptomic_columns)
     '''
