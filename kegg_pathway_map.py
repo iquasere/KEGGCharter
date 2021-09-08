@@ -3,7 +3,7 @@
 from Bio.KEGG.KGML import KGML_parser, KGML_pathway
 from Bio.Graphics.KGML_vis import KGMLCanvas
 from matplotlib import colors, cm
-import time
+from time import sleep
 
 
 def set_bgcolor(pathway_element, color):
@@ -156,7 +156,7 @@ class KEGGPathwayMap:
                 drawn = True
             except:
                 print('Draw failed! Waiting 10 secs...')
-                time.sleep(10)
+                sleep(10)
 
     def pathway_box_list(self, taxa_in_box, dic_colors, maxshared=10):
         """
