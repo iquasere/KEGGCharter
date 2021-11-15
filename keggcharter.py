@@ -18,46 +18,46 @@ import json
 
 from keggpathway_map import KEGGPathwayMap, expand_by_list_column
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 
 def get_arguments():
     parser = ArgumentParser(
         description="""KEGGCharter - A tool for representing genomic potential and transcriptomic expression into 
-        KEGG pathways""",
-        epilog="Input file must be specified.")
-    parser.add_argument("-o", "--output", type=str, help="Output directory",
-                        default='KEGGCharter_results')
-    parser.add_argument("-rd", "--resources-directory", type=str, default=sys.path[0],
-                        help="Directory for storing KGML and CSV files.")
-    parser.add_argument("-mm", "--metabolic-maps", type=str,
-                        help="IDs of metabolic maps to output",
-                        default=','.join(keggcharter_prokaryotic_maps()))
-    parser.add_argument("-gcol", "--genomic-columns", type=str,
-                        help="Names of columns with genomic identification")
-    parser.add_argument("-tcol", "--transcriptomic-columns", type=str,
-                        help="Names of columns with transcriptomics quantification")
-    parser.add_argument("-tls", "--taxa-list", type=str,
-                        help="List of taxa to represent in genomic potential charts (comma separated)")  # TODO - must be tested
-    parser.add_argument("-not", "--number-of-taxa", type=str, default='10',
-                        help="Number of taxa to represent in genomic potential charts (comma separated)")
-    parser.add_argument("-keggc", "--kegg-column", type=str, help="Column with KEGG IDs.")
-    parser.add_argument("-koc", "--ko-column", type=str, help="Column with KOs.")
-    parser.add_argument("-ecc", "--ec-column", type=str, help="Column with EC numbers.")
-    parser.add_argument("-iq", "--input-quantification", action="store_true",
-                        help="If input table has no quantification, will create a mock quantification column")
-    parser.add_argument("-it", "--input-taxonomy", type=str,
-                        help="If no taxonomy column exists and there is only one taxon in question.")
+        KEGG pathways""", epilog="Input file must be specified.")
+    parser.add_argument("-o", "--output", help="Output directory", default='KEGGCharter_results')
+    parser.add_argument(
+        "-rd", "--resources-directory", default=sys.path[0], help="Directory for storing KGML and CSV files.")
+    parser.add_argument(
+        "-mm", "--metabolic-maps", help="IDs of metabolic maps to output",
+        default=','.join(keggcharter_prokaryotic_maps()))
+    parser.add_argument("-gcol", "--genomic-columns", help="Names of columns with genomic identification")
+    parser.add_argument(
+        "-tcol", "--transcriptomic-columns", help="Names of columns with transcriptomics quantification")
+    parser.add_argument(
+        "-tls", "--taxa-list", help="List of taxa to represent in genomic potential charts (comma separated)")  # TODO - must be tested
+    parser.add_argument(
+        "-not", "--number-of-taxa", type=int, default=10,
+        help="Number of taxa to represent in genomic potential charts (comma separated)")
+    parser.add_argument("-keggc", "--kegg-column", help="Column with KEGG IDs.")
+    parser.add_argument("-koc", "--ko-column", help="Column with KOs.")
+    parser.add_argument("-ecc", "--ec-column", help="Column with EC numbers.")
+    parser.add_argument(
+        "-iq", "--input-quantification", action="store_true",
+        help="If input table has no quantification, will create a mock quantification column")
+    parser.add_argument(
+        "-it", "--input-taxonomy", help="If no taxonomy column exists and there is only one taxon in question.")
     # TODO - test this argument without UniProt shenanigans
-    parser.add_argument("-tc", "--taxa-column", type=str, default='Taxonomic lineage (GENUS)',
-                        help="Column with the taxa designations to represent with KEGGCharter")
-    parser.add_argument("--resume", action="store_true", default=False,
-                        help="If data inputed has already been analyzed by KEGGCharter.")
+    parser.add_argument(
+        "-tc", "--taxa-column", default='Taxonomic lineage (GENUS)',
+        help="Column with the taxa designations to represent with KEGGCharter")
+    parser.add_argument(
+        "--resume", action="store_true", default=False,
+        help="If data inputed has already been analyzed by KEGGCharter.")
     parser.add_argument('-v', '--version', action='version', version='KEGGCharter ' + __version__)
 
     required_named = parser.add_argument_group('required named arguments')
-    required_named.add_argument("-f", "--file", type=str, required=True,
-                                help="TSV or EXCEL table with information to chart")
+    required_named.add_argument("-f", "--file", required=True, help="TSV or EXCEL table with information to chart")
 
     special_functions = parser.add_argument_group('Special functions')
     special_functions.add_argument(
@@ -354,15 +354,16 @@ def get_mmaps2taxa(taxon_to_mmap_to_orthologs):
     return mmaps2taxa
 
 
-def chart_map(kgml_filename, ec_list, data, taxon_to_mmap_to_orthologs, mmaps2taxa, output=None, ko_column=None,
-              taxa_column=None,
-              genomic_columns=None, transcriptomic_columns=None, mmap2taxa=None):
+def chart_map(
+        kgml_filename, ec_list, data, taxon_to_mmap_to_orthologs, mmaps2taxa, output=None, ko_column=None,
+        taxa_column=None, genomic_columns=None, transcriptomic_columns=None, mmap2taxa=None,
+        number_of_taxa=10):
     if genomic_columns:  # when not set is None
         mmap = KGML_parser.read(open(kgml_filename))
         kegg_pathway_map = KEGGPathwayMap(pathway=mmap, ec_list=ec_list)
         kegg_pathway_map.genomic_potential_taxa(
             data, genomic_columns, ko_column, taxon_to_mmap_to_orthologs, mmaps2taxa, taxa_column=taxa_column,
-            output_basename=f'{output}/potential')
+            output_basename=f'{output}/potential', number_of_taxa=number_of_taxa)
     if transcriptomic_columns:  # when not set is None
         mmap = KGML_parser.read(open(kgml_filename))
         kegg_pathway_map = KEGGPathwayMap(pathway=mmap, ec_list=ec_list)
@@ -447,7 +448,8 @@ def main():
                 f'{args.resources_directory}/ko{metabolic_maps[i]}.xml', ec_list, data, taxon_to_mmap_to_orthologs,
                 mmaps2taxa, output=args.output,
                 ko_column=ko_column, taxa_column=args.taxa_column,
-                genomic_columns=args.genomic_columns, transcriptomic_columns=args.transcriptomic_columns)
+                genomic_columns=args.genomic_columns, transcriptomic_columns=args.transcriptomic_columns,
+                number_of_taxa=args.number_of_taxa)
         else:
             print(f'Analysis of map {metabolic_maps[i]} failed!')
             i += 1
