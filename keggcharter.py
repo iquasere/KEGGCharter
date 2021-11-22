@@ -18,7 +18,7 @@ import json
 
 from keggpathway_map import KEGGPathwayMap, expand_by_list_column
 
-__version__ = "0.3.1"
+__version__ = "0.3.2"
 
 
 def get_arguments():
@@ -183,7 +183,7 @@ def condense_data(data, main_column):
     return pd.merge(data, pd.concat([onlykos, wecs]), on=main_column, how='left').drop_duplicates()
 
 
-def prepare_data_for_charting(data, ko_column='KO (KEGGCharter)', ko_from_uniprot=False):
+def prepare_data_for_charting(data, mt_cols=None, ko_column='KO (KEGGCharter)', ko_from_uniprot=False):
     nokos = data[data[ko_column].isnull()]
     wkos = data[data[ko_column].notnull()].reset_index(drop=True)
     if ko_from_uniprot:
@@ -192,6 +192,9 @@ def prepare_data_for_charting(data, ko_column='KO (KEGGCharter)', ko_from_unipro
 
     # Expand KOs column if some elements are in the form KO1,KO2,...
     wkos[ko_column] = wkos[ko_column].apply(lambda x: x.split(','))
+    if mt_cols is not None:
+        for col in mt_cols:
+            wkos[col] = wkos[col] / wkos[ko_column].apply(lambda x: len(x))
     wkos = expand_by_list_column(wkos, column=ko_column)
     data = pd.concat([wkos, nokos])
     return data
@@ -420,7 +423,7 @@ def main():
         timed_message(f'Results saved to {args.output}/KEGGCharter_results.tsv')
 
     ko_column = 'KO (KEGGCharter)'  # TODO - set ko_column to user defined value
-    data = prepare_data_for_charting(data, ko_column=ko_column)
+    data = prepare_data_for_charting(data, ko_column=ko_column, mt_cols=args.transcriptomic_columns)
 
     if args.input_quantification:
         data['Quantification (KEGGCharter)'] = [1] * len(data)
