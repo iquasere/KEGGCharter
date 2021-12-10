@@ -18,7 +18,7 @@ import json
 
 from keggpathway_map import KEGGPathwayMap, expand_by_list_column
 
-__version__ = "0.3.2"
+__version__ = "0.3.3"
 
 
 def get_arguments():
@@ -422,9 +422,6 @@ def main():
         data.to_csv(f'{args.output}/KEGGCharter_results.tsv', sep='\t', index=False)
         timed_message(f'Results saved to {args.output}/KEGGCharter_results.tsv')
 
-    ko_column = 'KO (KEGGCharter)'  # TODO - set ko_column to user defined value
-    data = prepare_data_for_charting(data, ko_column=ko_column, mt_cols=args.transcriptomic_columns)
-
     if args.input_quantification:
         data['Quantification (KEGGCharter)'] = [1] * len(data)
         args.genomic_columns = 'Quantification (KEGGCharter)'
@@ -433,6 +430,9 @@ def main():
         data['Taxon (KEGGCharter)'] = [args.input_taxonomy] * len(data)
         args.taxa_column = 'Taxon (KEGGCharter)'
         args.taxa_list = args.input_taxonomy
+
+    ko_column = 'KO (KEGGCharter)'  # TODO - set ko_column to user defined value
+    data = prepare_data_for_charting(data, ko_column=ko_column, mt_cols=args.transcriptomic_columns)
 
     metabolic_maps = args.metabolic_maps.split(',')
     args.genomic_columns = args.genomic_columns.split(',')

@@ -1,7 +1,7 @@
 PREFIX="/opt/conda"
 dir="${PREFIX}/share/KEGGCharter"
 mkdir -p "${dir}"
-cp KEGGCharter/*.py KEGGCharter/KEGGCharter_prokaryotic_maps.txt "${dir}/"
+cp KEGGCharter/*.py KEGGCharter/*.txt "${dir}/"
 mkdir -p "${PREFIX}/bin"
 chmod +x "${dir}/keggcharter.py"
 ln -s "${dir}/keggcharter.py" "${PREFIX}/bin/"
