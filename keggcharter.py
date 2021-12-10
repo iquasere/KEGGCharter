@@ -431,13 +431,13 @@ def main():
         args.taxa_column = 'Taxon (KEGGCharter)'
         args.taxa_list = args.input_taxonomy
 
-    ko_column = 'KO (KEGGCharter)'  # TODO - set ko_column to user defined value
-    data = prepare_data_for_charting(data, ko_column=ko_column, mt_cols=args.transcriptomic_columns)
-
     metabolic_maps = args.metabolic_maps.split(',')
     args.genomic_columns = args.genomic_columns.split(',')
     if args.transcriptomic_columns:
         args.transcriptomic_columns = args.transcriptomic_columns.split(',')
+
+    ko_column = 'KO (KEGGCharter)'  # TODO - set ko_column to user defined value
+    data = prepare_data_for_charting(data, ko_column=ko_column, mt_cols=args.transcriptomic_columns)
 
     taxon_to_mmap_to_orthologs = download_resources(data, args.resources_directory, args.taxa_column, metabolic_maps)
     mmaps2taxa = get_mmaps2taxa(taxon_to_mmap_to_orthologs)    # '00190': ['Keratinibaculum paraultunense']
