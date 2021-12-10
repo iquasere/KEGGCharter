@@ -1,0 +1,14 @@
+name: keggcharter
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+    - matplotlib-base
+    - tqdm
+    - pandas
+    - biopython
+    - reportlab
+    - openpyxl
+    - poppler
+    - mscorefonts
