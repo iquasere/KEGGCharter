@@ -53,4 +53,4 @@ jobs:
         run: docker run keggcharter /bin/bash -c "ls"
 
       - name: Run KEGGCharter
-        run: docker run keggcharter /bin/bash -c "keggcharter.py -f KEGGCharter/ci/keggcharter_input.tsv -rd resources_directory -mm 00190,00680"
+        run: docker run keggcharter /bin/bash -c "keggcharter.py -f KEGGCharter/ci/keggcharter_input.tsv -rd resources_directory -mm 00190,00680 -keggc 'Cross-reference (KEGG)'"
