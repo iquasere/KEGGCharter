@@ -18,7 +18,7 @@ import json
 
 from keggpathway_map import KEGGPathwayMap, expand_by_list_column
 
-__version__ = "0.3.3"
+__version__ = "0.3.4"
 
 
 def get_arguments():
@@ -46,7 +46,8 @@ def get_arguments():
         "-iq", "--input-quantification", action="store_true",
         help="If input table has no quantification, will create a mock quantification column")
     parser.add_argument(
-        "-it", "--input-taxonomy", help="If no taxonomy column exists and there is only one taxon in question.")
+        "-it", "--input-taxonomy", action="store_true",
+        help="If no taxonomy column exists and there is only one taxon in question.")
     # TODO - test this argument without UniProt shenanigans
     parser.add_argument(
         "-tc", "--taxa-column", default='Taxonomic lineage (GENUS)',
