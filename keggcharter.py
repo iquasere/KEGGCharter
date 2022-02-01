@@ -69,7 +69,7 @@ def get_arguments():
 
     args.output = args.output.rstrip('/')
 
-    for directory in [args.output]:
+    for directory in [args.output] + [f'{args.resources_directory}/{folder}' for folder in ['', 'kc_kgmls', 'kc_csvs']]:
         if not os.path.isdir(directory):
             Path(directory).mkdir(parents=True, exist_ok=True)
             print('Created ' + directory)
