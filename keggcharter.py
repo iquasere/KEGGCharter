@@ -256,12 +256,12 @@ def write_kgmls(mmaps, out_dir, max_tries=3, org='ko'):
     return mmap_to_orthologs
 
 
-def set_text_boxes_kgml(kgml_filename, desc=''):
+def set_text_boxes_kgml(kgml_filename, out_filename, desc=''):
     handler = KGML_parser.read(open(kgml_filename))
     # Set text in boxes to EC numbers
-    with open(kgml_filename.replace('xml', 'csv'), 'w') as f:
+    with open(out_filename, 'w') as f:
         for ortholog_rec in tqdm(handler.orthologs, desc=desc):
-            lines = list()
+            lines = []
             kos = ortholog_rec.name.split()
             lines += kegg_link("enzyme", kos).read().split('\n')
             ecs = [line.split('\t')[1] for line in lines if len(line) > 0]
@@ -269,29 +269,6 @@ def set_text_boxes_kgml(kgml_filename, desc=''):
                 f.write(f'{",".join(ecs)}\n')
             else:
                 f.write(f'{",".join(kos)}\n')
-
-
-# TODO - deprecated?
-def set_text_boxes_kgmls(mmaps, out_dir, max_tries=3, org='ko'):
-    maps_done = [filename.split('/')[-1].rstrip('.csv') for filename in glob(f'{out_dir}/{org}*.csv')]
-    print(f"[{len(maps_done)}] maps already have boxes' text set")
-    mmaps = [map for map in mmaps if map not in maps_done]
-    i = 1
-    for mmap in mmaps:
-        tries = 0
-        done = False
-        while tries < max_tries and not done:
-            try:
-                set_text_boxes_kgml(
-                    f'{out_dir}/{org}{mmap}.xml', desc=f"[{i}/{len(mmaps)}] Getting boxes' labels for map [{mmap}]")
-                done = True
-            except:
-                print(f'Failed for map. Attempt: {tries + 1}')
-                if os.path.isfile(f'{out_dir}/map{mmap}.csv'):
-                    os.remove(f'{out_dir}/map{mmap}.csv')
-                tries += 1
-                sleep(10)
-        i += 1
 
 
 def taxon2prefix(taxon_name, organism_df):
@@ -380,9 +357,9 @@ def chart_map(
 
 def get_pathway_and_ec_list(rd, mmap):
     download = True
-    if os.path.isfile(f'{rd}/ko{mmap}.xml') and os.path.isfile(f'{rd}/ko{mmap}.csv'):
-        pathway = KGML_parser.read(open(f'{rd}/ko{mmap}.xml'))
-        with open(f'{rd}/ko{mmap}.csv') as f:
+    if os.path.isfile(f'{rd}/kc_kgmls/ko{mmap}.xml') and os.path.isfile(f'{rd}/kc_csvs/ko{mmap}.csv'):
+        pathway = KGML_parser.read(open(f'{rd}/kc_kgmls/ko{mmap}.xml'))
+        with open(f'{rd}/kc_csvs/ko{mmap}.csv') as f:
             ec_list = f.read().split('\n')
         if len(pathway.orthologs) == len(ec_list) - 1:  # -1 because of newline at the end
             download = False
@@ -392,11 +369,13 @@ def get_pathway_and_ec_list(rd, mmap):
         print(f'Some resources were not found for map [ko{mmap}]! Going to download them')
     if download:
         try:
-            write_kgml(mmap, f'{rd}/ko{mmap}.xml')
+            write_kgml(mmap, f'{rd}/kc_kgmls/ko{mmap}.xml')
             print(f'Got KGML for map [ko{mmap}]')
-            set_text_boxes_kgml(f'{rd}/ko{mmap}.xml', desc=f"Getting boxes' labels for map [ko{mmap}]")
+            set_text_boxes_kgml(
+                f'{rd}/kc_kgmls/ko{mmap}.xml', f'{rd}/kc_csvs/ko{mmap}.csv',
+                desc=f"Getting boxes' labels for map [ko{mmap}]")
             pathway = KGML_parser.read(open(f'{rd}/ko{mmap}.xml'))
-            with open(f'{rd}/ko{mmap}.csv') as f:
+            with open(f'{rd}/kc_csvs/ko{mmap}.csv') as f:
                 ec_list = f.read().split('\n')
         except:     # may be 404 not found, but also connection timed out, this way everything works
             print(f'Could not download resources for [ko{mmap}]!')
@@ -449,8 +428,8 @@ def main():
             timed_message(f'[{i + 1}/{len(metabolic_maps)}] {pathway.title}')
             #pathway_handler = KEGGPathwayMap(pathway, ec_list)
             chart_map(
-                f'{args.resources_directory}/ko{metabolic_maps[i]}.xml', ec_list, data, taxon_to_mmap_to_orthologs,
-                mmaps2taxa, output=args.output,
+                f'{args.resources_directory}/kc_kgmls/ko{metabolic_maps[i]}.xml', ec_list, data,
+                taxon_to_mmap_to_orthologs, mmaps2taxa, output=args.output,
                 ko_column=ko_column, taxa_column=args.taxa_column,
                 genomic_columns=args.genomic_columns, transcriptomic_columns=args.transcriptomic_columns,
                 number_of_taxa=args.number_of_taxa)
