@@ -2,6 +2,15 @@
 
 A tool for representing genomic potential and transcriptomic expression into KEGG pathways.
 
+* [Features](https://github.com/iquasere/KEGGCharter#features)
+* [Installation](https://github.com/iquasere/KEGGCharter#installation)
+* [Running KEGGCharter](https://github.com/iquasere/KEGGCharter#running-keggcharter)
+* [Testing KEGGCharter](https://github.com/iquasere/KEGGCharter#testing-keggcharter)
+* [Outputs](https://github.com/iquasere/KEGGCharter#outputs)
+* [Arguments for KEGGCharter](https://github.com/iquasere/KEGGCharter#arguments-for-keggcharter)
+* [Referencing KEGGCharter](https://github.com/iquasere/KEGGCharter#referencing-keggcharter)
+
+
 ## Features
 
 KEGGCharter is a user-friendly implementation of KEGG API and Pathway functionalities. It allows for:
@@ -18,14 +27,14 @@ conda install -c conda-forge -c bioconda keggcharter
 
 ## Running KEGGCharter
 
-To run KEGGCharter, an input file must be supplied - see ```Testing KEGGCharter with an example``` section - and columns 
+To run KEGGCharter, an input file must be supplied - see ```Testing KEGGCharter``` section - and columns 
 with genomic and/or transcriptomic information, as well as one column with either KEGG IDs, KOs or EC numbers, must be 
 present in the file and specified through the command line.
 ```
 python kegg_charter.py -f input_file.xlsx -o output_folder -mgc mg_column1,mg_column2 -mtc mt_column1,mt_column2 ...
 ```
 
-## Testing KEGGCharter with an example
+## Testing KEGGCharter
 
 An example input file is available [here](https://github.com/iquasere/KEGGCharter/blob/master/MOSCA_Entry_Report.xlsx). 
 This is one output of [MOSCA](https://github.com/iquasere/MOSCA), which can be directly inputted to KEGGCharter to obtain
@@ -37,7 +46,7 @@ Just make sure ```MOSCA_Entry_Report.xlsx``` is in the present folder, or indica
 representations for all 252 default maps of KEGGCharter. If you want to represent for less or more, run with the ```--metabolic-maps``` 
 parameter to indicate to KEGGCharter what maps to run (comma separated).
 
-## First time KEGGCharter runs it will take a long time
+### First time KEGGCharter runs it will take a long time
 
 KEGGCharter needs KGMLs and EC numbers to boxes relations, which it will automatically retrieve for every map inputted. 
 This might take some time, but you only need to run it once. 
@@ -111,3 +120,7 @@ Special functions:
                         Outputs KEGG maps IDs and descriptions to the console
                         (so you may pick the ones you want!)
 ```
+
+## Referencing KEGGCharter
+
+If you use KEGGCharter, please cite its [publication](https://www.sciencedirect.com/science/article/pii/S2001037022001179).
