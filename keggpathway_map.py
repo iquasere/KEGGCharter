@@ -205,7 +205,7 @@ class KEGGPathwayMap:
 
     def set_pathway(self, ec_list):
         """
-        Set pathway with Kegg Pathway ID
+        Set pathway with KEGG Pathway ID
         """
         self.ko_boxes = dict()
         for i in range(len(self.orthologs)):
@@ -243,11 +243,11 @@ class KEGGPathwayMap:
         # TODO - check reactions parameter
         try:
             KGMLCanvas(self,
-                   import_imagemap=imagemap,
-                   label_orthologs=orthologs,
-                   label_compounds=compounds,
-                   label_maps=maps,
-                   label_reaction_entries=reactions).draw(filename)
+                       import_imagemap=imagemap,
+                       label_orthologs=orthologs,
+                       label_compounds=compounds,
+                       label_maps=maps,
+                       label_reaction_entries=reactions).draw(filename)
         except PermissionError:
             exit(f'Was forbidden to write to {filename}. Check your permissions for that folder/filename')
 
@@ -266,12 +266,14 @@ class KEGGPathwayMap:
             paired = True if nrboxes % 2 == 0 else False
             for i in range(nrboxes):
                 newrecord = create_box_heatmap(
-                    self.orthologs[box], nrboxes, i * 2 - (nrboxes - 1) if paired else i - int(nrboxes / 2),    # if nrboxes = 8, i * 2 - (nrboxes - 1) = -7,-5,-3,-1,1,3,5,7 # if nrboxes = 9, i - int(nrboxes / 2) = -4,-3,-2,-1,0,1,2,3,4
+                    self.orthologs[box], nrboxes, i * 2 - (nrboxes - 1) if paired else i - int(nrboxes / 2),
+                    # if nrboxes = 8, i * 2 - (nrboxes - 1) = -7,-5,-3,-1,1,3,5,7 # if nrboxes = 9, i - int(nrboxes / 2) = -4,-3,-2,-1,0,1,2,3,4
                     paired=paired)
                 if newrecord != 1:
                     newrecord.bgcolor = dic_colors[taxa_in_box[box][i]]
                     self.orthologs[box].graphics.append(newrecord)
-            if self.orthologs[box].graphics[0].width is not None:  # TODO - should check more deeply why sometimes width is None
+            if self.orthologs[box].graphics[
+                0].width is not None:  # TODO - should check more deeply why sometimes width is None
                 create_tile_box(self.orthologs[box])
 
     def pathway_boxes_differential(self, dataframe, log=True, colormap="coolwarm"):
@@ -303,12 +305,14 @@ class KEGGPathwayMap:
             paired = True if nrboxes % 2 == 0 else False
             for i in range(nrboxes):
                 newrecord = create_box_heatmap(
-                    self.orthologs[box], nrboxes, i * 2 - (nrboxes - 1) if paired else i - int(nrboxes / 2),    # if nrboxes = 8, i * 2 - (nrboxes - 1) = -7,-5,-3,-1,1,3,5,7; if nrboxes = 9, i - int(nrboxes / 2) = -4,-3,-2,-1,0,1,2,3,4
+                    self.orthologs[box], nrboxes, i * 2 - (nrboxes - 1) if paired else i - int(nrboxes / 2),
+                    # if nrboxes = 8, i * 2 - (nrboxes - 1) = -7,-5,-3,-1,1,3,5,7; if nrboxes = 9, i - int(nrboxes / 2) = -4,-3,-2,-1,0,1,2,3,4
                     paired=paired)
                 if newrecord != 1:  # TODO - assess why sometimes get 1
                     newrecord.bgcolor = colors[i]
                     self.orthologs[box].graphics.append(newrecord)
-            if self.orthologs[box].graphics[0].width is not None:  # TODO - should check more deeply why sometimes width is None
+            if self.orthologs[box].graphics[
+                0].width is not None:  # TODO - should check more deeply why sometimes width is None
                 create_tile_box(self.orthologs[box])
 
     def grey_boxes(self, box_list):
@@ -350,7 +354,7 @@ class KEGGPathwayMap:
 
     def genomic_potential_taxa(
             self, data, samples, ko_column, taxon_to_mmap_to_orthologs, mmaps2taxa,
-            taxa_column='Taxonomic lineage (GENUS)',  output_basename=None,
+            taxa_column='Taxonomic lineage (GENUS)', output_basename=None,
             number_of_taxa=10):
         """
         Represents the genomic potential of the dataset for a certain taxa level,
