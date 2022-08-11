@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from argparse import ArgumentParser
+from argparse import ArgumentParser, ArgumentTypeError
 import numpy as np
 import os
 import pandas as pd
@@ -18,7 +18,7 @@ import json
 
 from keggpathway_map import KEGGPathwayMap, expand_by_list_column
 
-__version__ = "0.3.5"
+__version__ = "0.3.6"
 
 
 def get_arguments():
@@ -55,6 +55,8 @@ def get_arguments():
     parser.add_argument(
         "--resume", action="store_true", default=False,
         help="If data inputed has already been analyzed by KEGGCharter.")
+    parser.add_argument(
+        "--step", default=150, type=int, help="Number of IDs to submit per request through the KEGG API.")
     parser.add_argument('-v', '--version', action='version', version='KEGGCharter ' + __version__)
 
     required_named = parser.add_argument_group('required named arguments')
@@ -68,13 +70,30 @@ def get_arguments():
     args = parser.parse_args()
 
     args.output = args.output.rstrip('/')
-
     for directory in [args.output] + [f'{args.resources_directory}/{folder}' for folder in ['', 'kc_kgmls', 'kc_csvs']]:
         if not os.path.isdir(directory):
             Path(directory).mkdir(parents=True, exist_ok=True)
-            print('Created ' + directory)
-
+            print(f'Created {directory}')
+    if not hasattr(args, 'genomic_columns'):
+        input_quantification = str2bool(
+            'No genomic columns specified! See https://github.com/iquasere/KEGGCharter#mock-imputation-of-'
+            'quantification-and-taxonomy for more details. Do you want to use mock quantification? [y/N]')
+        if input_quantification:
+            args.input_quantification = True
+        else:
+            exit('No genomic columns specified!')
     return args
+
+
+def str2bool(v):
+    if v.lower() == 'auto':
+        return 'auto'
+    elif v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise ArgumentTypeError('Boolean value expected.')
 
 
 def timed_message(message):
@@ -98,8 +117,8 @@ def read_input_file(file):
     return pd.read_csv(file, sep='\t')
 
 
-def further_information(data, kegg_column=None, ko_column=None, ec_column=None):
-    data = get_cross_references(data, kegg_column=kegg_column, ko_column=ko_column, ec_column=ec_column)
+def further_information(data, kegg_column=None, ko_column=None, ec_column=None, step=150):
+    data = get_cross_references(data, kegg_column=kegg_column, ko_column=ko_column, ec_column=ec_column, step=step)
     main_column = kegg_column if kegg_column is not None else ko_column if ko_column is not None else ec_column
     data = condense_data(data, main_column)
     return data, main_column
@@ -134,7 +153,7 @@ def id2id(input_ids, column, output_column, output_ids_type, step=150, desc=''):
     return result
 
 
-def ids_interconversion(data, column, ids_type='kegg'):
+def ids_interconversion(data, column, ids_type='kegg', step=150):
     ids = list(set(data[data[column].notnull()][column]))
     base_desc = 'Converting %i %s to %s through the KEGG API'
     if ids_type == 'kegg':
@@ -142,31 +161,34 @@ def ids_interconversion(data, column, ids_type='kegg'):
         # Should be no problem since both IDs likely will always represent same functions
         trimmed_ids = [ide.split(';')[0] for ide in ids]
         relational = pd.DataFrame([ids, trimmed_ids]).transpose()
-        new_ids = id2id(trimmed_ids, column, 'KO (KEGGCharter)', 'ko', desc=base_desc % (len(ids), 'KEGG IDs', 'KOs'))
+        new_ids = id2id(
+            trimmed_ids, column, 'KO (KEGGCharter)', 'ko', desc=base_desc % (len(ids), 'KEGG IDs', 'KOs'), step=step)
         new_ids = pd.merge(new_ids, relational, left_on=column, right_on=1)  # mcj:MCON_3003;   mcj:MCON_3003
         del new_ids[column]  # mcj:MCON_3003    K07486  mcj:MCON_3003;  mcj:MCON_3003
         del new_ids[1]
         new_ids.columns = ['KO (KEGGCharter)', column]
     elif ids_type == 'ko':
         new_ids = id2id(
-            ids, column, 'EC number (KEGGCharter)', 'enzyme', desc=base_desc % (len(ids), 'KOs', 'EC numbers'))
+            ids, column, 'EC number (KEGGCharter)', 'enzyme', desc=base_desc % (len(ids), 'KOs', 'EC numbers'),
+            step=step)
     else:  # ids_type == 'ec':
-        ids = [f'ec:{ide}' for ide in ids]
-        new_ids = id2id(ids, column, 'KO (KEGGCharter)', 'ko', desc=base_desc % (len(ids), 'EC numbers', 'KOs'))
+        #ids = [f'ec:{ide}' for ide in ids]
+        new_ids = id2id(
+            ids, column, 'KO (KEGGCharter)', 'ko', desc=base_desc % (len(ids), 'EC numbers', 'KOs'), step=step)
     return pd.merge(data, new_ids, on=column, how='left')
 
 
-def get_cross_references(data, kegg_column=None, ko_column=None, ec_column=None):
+def get_cross_references(data, kegg_column=None, ko_column=None, ec_column=None, step=150):
     # KEGG ID to KO -> if KO column is not set, KEGGCharter will get them through the KEGG API
     if kegg_column:
-        data = ids_interconversion(data, column=kegg_column, ids_type='kegg')
-        data = ids_interconversion(data, column='KO (KEGGCharter)', ids_type='ko')
+        data = ids_interconversion(data, column=kegg_column, ids_type='kegg', step=step)
+        data = ids_interconversion(data, column='KO (KEGGCharter)', ids_type='ko', step=step)
     if ko_column:
-        data = ids_interconversion(data, column=ko_column, ids_type='ko')
-        data = ids_interconversion(data, column='EC number (KEGGCharter)', ids_type='ec')
+        data = ids_interconversion(data, column=ko_column, ids_type='ko', step=step)
+        data = ids_interconversion(data, column='EC number (KEGGCharter)', ids_type='ec', step=step)
     if ec_column:
-        data = ids_interconversion(data, column=ec_column, ids_type='ec')
-        data = ids_interconversion(data, column='KO (KEGGCharter)', ids_type='ko')
+        data = ids_interconversion(data, column=ec_column, ids_type='ec', step=step)
+        data = ids_interconversion(data, column='KO (KEGGCharter)', ids_type='ko', step=step)
     if not (kegg_column or ko_column or ec_column):
         exit('Need to specify a column with either KEGG IDs, KOs or EC numbers!')
     return data
@@ -384,9 +406,6 @@ def get_pathway_and_ec_list(rd, mmap):
 
 
 def read_input():
-    """
-    Reads input from command line
-    """
     args = get_arguments()
     timed_message('Arguments valid.')
     if args.show_available_maps:
@@ -401,7 +420,7 @@ def main():
 
     if not args.resume:
         data, main_column = further_information(
-            data, kegg_column=args.kegg_column, ko_column=args.ko_column, ec_column=args.ec_column)
+            data, kegg_column=args.kegg_column, ko_column=args.ko_column, ec_column=args.ec_column, step=args.step)
         data.to_csv(f'{args.output}/KEGGCharter_results.tsv', sep='\t', index=False)
         timed_message(f'Results saved to {args.output}/KEGGCharter_results.tsv')
 
