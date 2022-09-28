@@ -397,19 +397,17 @@ class KEGGPathwayMap:
         else:
             dic_colors = {}
         # boxes with KOs identified but not from the most abundant taxa are still identified
-        df = data[samples + [ko_column]]
+        df = data[(data[taxa_column].isin(mmaps2taxa[self.name.split('ko')[1]]) &
+                   data[ko_column].isin(self.ko_boxes.keys())) & ~data[taxa_column].isin(taxa)]
         df = df[df.any(axis=1)]
-        grey_boxes = []
         for ortholog in df[ko_column]:
             if ortholog in self.ko_boxes.keys():
+                dic_colors[grey_taxa] = "#7c7272"
                 for box in self.ko_boxes[ortholog]:
-                    if box not in box2taxon.keys() and box not in grey_boxes:
-                        grey_boxes.append(box)
-                        print(grey_boxes)
-        # a new taxon: "Other taxa"
-        if len(grey_boxes) > 0:
-            dic_colors[grey_taxa] = "#7c7272"
-        self.grey_boxes(grey_boxes)
+                    if box not in box2taxon.keys():
+                        box2taxon[box].append(grey_taxa)
+                    else:
+                        box2taxon[box] = [grey_taxa]
 
         name = self.name.split(':')[-1]
         name_pdf = f'{output_basename}_{name}.pdf'
