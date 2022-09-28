@@ -10,6 +10,7 @@ from matplotlib import pyplot as plt, colors, cm
 import pandas as pd
 from re import search
 import sys
+import time
 
 
 def set_bgcolor(pathway_element, color):
@@ -207,7 +208,7 @@ class KEGGPathwayMap:
         """
         Set pathway with KEGG Pathway ID
         """
-        self.ko_boxes = dict()
+        self.ko_boxes = {}
         for i in range(len(self.orthologs)):
             set_bgcolor(self.orthologs[i], "#ffffff")  # set all boxes to white
             # self.set_fgcolor(self.pathway.orthologs[i], "#ffffff")             # This might be helpful in the future, if an additional layer of marking is needed
@@ -215,15 +216,15 @@ class KEGGPathwayMap:
                 i].name.split()]  # 'ko:K16157 ko:K16158 ko:K16159' -> ['K16157', 'K16158', 'K16159']
             for ortholog in orthologs_in_box:
                 if ortholog not in self.ko_boxes.keys():
-                    self.ko_boxes[ortholog] = list()
+                    self.ko_boxes[ortholog] = []
                 self.ko_boxes[ortholog].append(i)  # {'K16157':[0,13,432], 'K16158':[4,13,545]}
 
             # Set name as EC number
             ecs = ec_list[i].split(',')
             if len(ecs) > 0:
-                self.orthologs[i].graphics[0].name = max(set(ecs), key=ecs.count).upper()
+                self.orthologs[i].graphics[0].name = max(set(ecs), key=ecs.count).split(':')[1]
             else:
-                self.orthologs[i].graphics[0].name = orthologs_in_box[0]
+                self.orthologs[i].graphics[0].name = orthologs_in_box[0].split(':')[1]
 
     ############################################################################
     ####                          Operations                                ####
@@ -267,13 +268,14 @@ class KEGGPathwayMap:
             for i in range(nrboxes):
                 newrecord = create_box_heatmap(
                     self.orthologs[box], nrboxes, i * 2 - (nrboxes - 1) if paired else i - int(nrboxes / 2),
-                    # if nrboxes = 8, i * 2 - (nrboxes - 1) = -7,-5,-3,-1,1,3,5,7 # if nrboxes = 9, i - int(nrboxes / 2) = -4,-3,-2,-1,0,1,2,3,4
+                    # if nrboxes = 8, i * 2 - (nrboxes - 1) = -7,-5,-3,-1,1,3,5,7
+                    # if nrboxes = 9, i - int(nrboxes / 2) = -4,-3,-2,-1,0,1,2,3,4
                     paired=paired)
                 if newrecord != 1:
                     newrecord.bgcolor = dic_colors[taxa_in_box[box][i]]
                     self.orthologs[box].graphics.append(newrecord)
-            if self.orthologs[box].graphics[
-                0].width is not None:  # TODO - should check more deeply why sometimes width is None
+            # TODO - must check more deeply why sometimes width is None
+            if self.orthologs[box].graphics[0].width is not None:
                 create_tile_box(self.orthologs[box])
 
     def pathway_boxes_differential(self, dataframe, log=True, colormap="coolwarm"):
@@ -318,16 +320,16 @@ class KEGGPathwayMap:
     def grey_boxes(self, box_list):
         for i in box_list:
             set_bgcolor(self.orthologs[i], "#7c7272")
-            set_fgcolor(self.orthologs[i], "#7c7272")
+            set_fgcolor(self.orthologs[i], "#ffffff")
 
-    def create_potential_legend(self, colors, labels, filename):
+    def create_potential_legend(self, map_colors, labels, filename):
         """
         Draws the color to taxa labels of genomic potential representations
-        :param colors: list - list of colors of the different taxa
+        :param map_colors: list - list of colors of the different taxa
         :param labels: list - list of taxa corresponding to the colors
         :param filename: string - filename to output
         """
-        handles = [plt.plot([], [], marker="s", color=color, ls="none")[0] for color in colors]
+        handles = [plt.plot([], [], marker="s", color=color, ls="none")[0] for color in map_colors]
         legend = plt.legend(handles, labels, loc=3, framealpha=1, frameon=True)
         fig = legend.figure
         fig.canvas.draw()
@@ -354,65 +356,68 @@ class KEGGPathwayMap:
 
     def genomic_potential_taxa(
             self, data, samples, ko_column, taxon_to_mmap_to_orthologs, mmaps2taxa,
-            taxa_column='Taxonomic lineage (GENUS)', output_basename=None,
-            number_of_taxa=10):
+            taxa_column='Taxonomic lineage (GENUS)', output_basename=None, number_of_taxa=10, grey_taxa='Other taxa'):
         """
         Represents the genomic potential of the dataset for a certain taxa level,
         by coloring each taxon with a unique color
         :param data: pandas.DataFrame with data already processed by KEGGPathway
         :param samples: list of str column names of the dataset correspoding to
         expression values
-        :param mmap2taxa: dict - of taxa to color
+        :param taxon_to_mmap_to_orthologs: dict - {'Keratinibaculum paraultunense' : {'00190': ['1', '2']}}
+        :param mmaps2taxa: dict - of taxa to color
         :param ko_column: str - column with KOs
         :param taxa_column: str - column with taxonomic classification
         :param output_basename: str - basename for map outputs
         :param number_of_taxa: int - number of most abundant taxa to represent in each map
+        :param grey_taxa: str - name of taxa to represent in grey
         """
-        # for every taxon, check all boxes it is in, and save that info to box2taxon
-        box2taxon = dict()
-        data = data[data[taxa_column].isin(mmaps2taxa[self.name.split('ko')[1]])]
-        taxa = self.most_abundant_taxa(data, samples, taxa_column, number_of_taxa=number_of_taxa)
-        taxonomy_colors = taxa_colors(ncolor=len(taxa))
-        dic_colors = {taxa[i]: taxonomy_colors[i] for i in range(len(taxa))}
-        for taxon in dic_colors.keys():
-            df = data[data[taxa_column] == taxon][samples + [ko_column]]
-            df = df[df.any(axis=1)]
-            for ortholog in df[ko_column]:
-                if ortholog in self.ko_boxes.keys():
-                    for box in self.ko_boxes[ortholog]:
-                        if box in box2taxon.keys() and box in \
-                                taxon_to_mmap_to_orthologs[taxon][self.name.split('ko')[1]]:
-                            if taxon not in box2taxon[box]:
-                                box2taxon[box].append(taxon)
-                        else:
-                            box2taxon[box] = [taxon]
-
-        # for every box with KOs identified from the most abundant taxa, sub-boxes are created with colours of the
-        # corresponding taxa
-        self.pathway_box_list(box2taxon, dic_colors)
+        box2taxon = {}
+        if mmaps2taxa is not None:
+            # for every taxon, check all boxes it is in, and save that info to box2taxon
+            data = data[data[taxa_column].isin(mmaps2taxa[self.name.split('ko')[1]]) &
+                        data[ko_column].isin(self.ko_boxes.keys())]
+            taxa = self.most_abundant_taxa(data, samples, taxa_column, number_of_taxa=number_of_taxa)
+            taxonomy_colors = taxa_colors(ncolor=len(taxa))
+            dic_colors = {taxa[i]: taxonomy_colors[i] for i in range(len(taxa))}
+            for taxon in dic_colors.keys():
+                df = data[data[taxa_column] == taxon][samples + [ko_column]]
+                df = df[df.any(axis=1)]
+                for ortholog in df[ko_column]:
+                    if ortholog in self.ko_boxes.keys():
+                        for box in self.ko_boxes[ortholog]:
+                            if box in box2taxon.keys() and (
+                                    box in taxon_to_mmap_to_orthologs[taxon][self.name.split('ko')[1]]):
+                                if taxon not in box2taxon[box]:
+                                    box2taxon[box].append(taxon)
+                            else:
+                                box2taxon[box] = [taxon]
+            # for every box with KOs identified from the most abundant taxa, sub-boxes are created with colours of the
+            # corresponding taxa
+            self.pathway_box_list(box2taxon, dic_colors)
+        else:
+            dic_colors = {}
         # boxes with KOs identified but not from the most abundant taxa are still identified
         df = data[samples + [ko_column]]
         df = df[df.any(axis=1)]
-        grey_boxes = list()
+        grey_boxes = []
         for ortholog in df[ko_column]:
             if ortholog in self.ko_boxes.keys():
                 for box in self.ko_boxes[ortholog]:
                     if box not in box2taxon.keys() and box not in grey_boxes:
                         grey_boxes.append(box)
+                        print(grey_boxes)
+        # a new taxon: "Other taxa"
+        if len(grey_boxes) > 0:
+            dic_colors[grey_taxa] = "#7c7272"
         self.grey_boxes(grey_boxes)
 
         name = self.name.split(':')[-1]
         name_pdf = f'{output_basename}_{name}.pdf'
         self.to_pdf(name_pdf)
 
-        # a new taxon: "Other taxa"
-        if len(grey_boxes) > 0:
-            dic_colors["Other taxa"] = "#7c7272"
-
         # TODO - legend should be ajusted for the maps - otherwise, makes no sense to have one legend for each map -
         #  they all become the same, except for "Other taxa"
-        self.create_potential_legend(
-            dic_colors.values(), dic_colors.keys(), name_pdf.replace('.pdf', '_legend.png'))
+        self.create_potential_legend(dic_colors.values(), dic_colors.keys(), name_pdf.replace('.pdf', '_legend.png'))
 
         self.add_legend(
             name_pdf, name_pdf.replace('.pdf', '_legend.png'),
@@ -427,8 +432,8 @@ class KEGGPathwayMap:
         plt.savefig(filename, bbox_inches='tight')
 
     def differential_expression_sample(
-            self, data, samples, ko_column, taxon_to_mmap_to_orthologs, mmaps2taxa,
-            taxa_column='Taxonomic lineage (GENUS)', output_basename=None, log=True):
+            self, data, samples, ko_column, mmaps2taxa, taxa_column='Taxonomic lineage (GENUS)',
+            output_basename=None, log=True):
         """
         Represents in small heatmaps the expression levels of each sample on the
         dataset present in the given pathway map. The values can be transford to
@@ -436,10 +441,13 @@ class KEGGPathwayMap:
         :param data: pandas.DataFrame with data already processed by KEGGPathway
         :param samples: list - column names of the dataset corresponding to expression values
         :param ko_column: str - column with KOs to represent
+        :param mmaps2taxa: dict - of taxa to color
+        :param taxa_column: str - column with taxonomic classification
         :param output_basename: string - basename of outputs
         :param log: bol - convert the expression values to logarithmic scale?
         """
-        data = data[data[taxa_column].isin(mmaps2taxa[self.name.split('ko')[1]])]
+        if mmaps2taxa is not None:
+            data = data[data[taxa_column].isin(mmaps2taxa[self.name.split('ko')[1]])]
         df = data.groupby(ko_column)[samples + [ko_column]].sum()
         df = df[df.any(axis=1)]
         df['Boxes'] = [self.ko_boxes[ko] if ko in self.ko_boxes.keys() else np.nan for ko in df.index]
