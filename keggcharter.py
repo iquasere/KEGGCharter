@@ -18,7 +18,7 @@ import json
 
 from keggpathway_map import KEGGPathwayMap, expand_by_list_column
 
-__version__ = "0.4.0"
+__version__ = "0.4.1"
 
 
 def get_arguments():
@@ -438,7 +438,7 @@ def main():
     if args.transcriptomic_columns:
         args.transcriptomic_columns = args.transcriptomic_columns.split(',')
 
-    ko_column = 'KO (KEGGCharter)'  # TODO - set ko_column to user defined value
+    ko_column = 'KO (KEGGCharter)' if not hasattr(args, 'ko_column') or not args.ko_column else args.ko_column
 
     if args.resume:
         data = pd.read_csv(f'{args.output}/data_for_charting.tsv', sep='\t')

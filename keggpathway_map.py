@@ -355,7 +355,7 @@ class KEGGPathwayMap:
         return data.index.tolist()[:number_of_taxa]
 
     def genomic_potential_taxa(
-            self, data, samples, ko_column, taxon_to_mmap_to_orthologs, mmaps2taxa=None,
+            self, data, samples, ko_column, taxon_to_mmap_to_orthologs, mmaps2taxa,
             taxa_column='Taxonomic lineage (GENUS)', output_basename=None, number_of_taxa=10, grey_taxa='Other taxa'):
         """
         Represents the genomic potential of the dataset for a certain taxa level,
@@ -408,12 +408,12 @@ class KEGGPathwayMap:
                             box2taxon[box] = [grey_taxa]
         else:
             # if input_taxonomy
-            dic_colors = {grey_taxa : "#7c7272"}
+            dic_colors = {grey_taxa: "#7c7272"}
             df = data[data.any(axis=1)]
             for ortholog in df[ko_column]:
                 if ortholog in self.ko_boxes.keys():
                     for box in self.ko_boxes[ortholog]:
-                        if box not in box2taxon.keys():
+                        if box in box2taxon.keys():
                             box2taxon[box].append(grey_taxa)
                         else:
                             box2taxon[box] = [grey_taxa]
