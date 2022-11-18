@@ -194,12 +194,14 @@ def get_cross_references(data, kegg_column=None, ko_column=None, ec_column=None,
 
 
 def condense_data(data, main_column):
-    onlykos = data[data['KO (KEGGCharter)'].notnull() & (data['EC number (KEGGCharter)'].isnull())]
+    onlykos = data[data['KO (KEGGCharter)'].notnull() & (data['EC number (KEGGCharter)'].isnull())][
+        [main_column, 'KO (KEGGCharter)']]
     onlykos = onlykos.groupby(main_column).agg({'KO (KEGGCharter)': lambda x: ','.join(set(x))}).reset_index()
     onlykos['EC number (KEGGCharter)'] = [np.nan] * len(onlykos)
-    wecs = data[data['EC number (KEGGCharter)'].notnull()]
-    wecs = wecs.groupby(main_column).agg({'KO (KEGGCharter)': lambda x: ','.join(set(x)),
-                                          'EC number (KEGGCharter)': lambda x: ','.join(set(x))}).reset_index()
+    wecs = data[data['EC number (KEGGCharter)'].notnull()][[main_column, 'KO (KEGGCharter)', 'EC number (KEGGCharter)']]
+    wecs = wecs.groupby(main_column).agg(
+        {'KO (KEGGCharter)': lambda x: ','.join(set([elem for elem in x if elem is not np.nan])),
+         'EC number (KEGGCharter)': lambda x: ','.join(set(x))}).reset_index()
     del data['KO (KEGGCharter)']
     del data['EC number (KEGGCharter)']
     return pd.merge(data, pd.concat([onlykos, wecs]), on=main_column, how='left').drop_duplicates()
@@ -363,8 +365,9 @@ def chart_map(
         mmap = KGML_parser.read(open(kgml_filename))
         kegg_pathway_map = KEGGPathwayMap(pathway=mmap, ec_list=ec_list)
         kegg_pathway_map.genomic_potential_taxa(
-            data, genomic_columns, ko_column, taxon_to_mmap_to_orthologs, mmaps2taxa, taxa_column=taxa_column,
-            output_basename=f'{output}/potential', number_of_taxa=number_of_taxa, grey_taxa=grey_taxa)
+            data, genomic_columns, ko_column, taxon_to_mmap_to_orthologs, mmaps2taxa=mmaps2taxa,
+            taxa_column=taxa_column, output_basename=f'{output}/potential', number_of_taxa=number_of_taxa,
+            grey_taxa=grey_taxa)
     if transcriptomic_columns:  # when not set is None
         mmap = KGML_parser.read(open(kgml_filename))
         kegg_pathway_map = KEGGPathwayMap(pathway=mmap, ec_list=ec_list)

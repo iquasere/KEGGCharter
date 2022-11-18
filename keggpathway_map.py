@@ -355,7 +355,7 @@ class KEGGPathwayMap:
         return data.index.tolist()[:number_of_taxa]
 
     def genomic_potential_taxa(
-            self, data, samples, ko_column, taxon_to_mmap_to_orthologs, mmaps2taxa,
+            self, data, samples, ko_column, taxon_to_mmap_to_orthologs, mmaps2taxa=None,
             taxa_column='Taxonomic lineage (GENUS)', output_basename=None, number_of_taxa=10, grey_taxa='Other taxa'):
         """
         Represents the genomic potential of the dataset for a certain taxa level,
@@ -394,20 +394,29 @@ class KEGGPathwayMap:
             # for every box with KOs identified from the most abundant taxa, sub-boxes are created with colours of the
             # corresponding taxa
             self.pathway_box_list(box2taxon, dic_colors)
+            # boxes with KOs identified but not from the most abundant taxa are still identified in grey
+            df = data[(data[taxa_column].isin(mmaps2taxa[self.name.split('ko')[1]]) &
+                       data[ko_column].isin(self.ko_boxes.keys())) & ~data[taxa_column].isin(taxa)]
+            df = df[df.any(axis=1)]
+            for ortholog in df[ko_column]:
+                if ortholog in self.ko_boxes.keys():
+                    dic_colors[grey_taxa] = "#7c7272"
+                    for box in self.ko_boxes[ortholog]:
+                        if box not in box2taxon.keys():
+                            box2taxon[box].append(grey_taxa)
+                        else:
+                            box2taxon[box] = [grey_taxa]
         else:
-            dic_colors = {}
-        # boxes with KOs identified but not from the most abundant taxa are still identified
-        df = data[(data[taxa_column].isin(mmaps2taxa[self.name.split('ko')[1]]) &
-                   data[ko_column].isin(self.ko_boxes.keys())) & ~data[taxa_column].isin(taxa)]
-        df = df[df.any(axis=1)]
-        for ortholog in df[ko_column]:
-            if ortholog in self.ko_boxes.keys():
-                dic_colors[grey_taxa] = "#7c7272"
-                for box in self.ko_boxes[ortholog]:
-                    if box not in box2taxon.keys():
-                        box2taxon[box].append(grey_taxa)
-                    else:
-                        box2taxon[box] = [grey_taxa]
+            # if input_taxonomy
+            dic_colors = {grey_taxa : "#7c7272"}
+            df = data[data.any(axis=1)]
+            for ortholog in df[ko_column]:
+                if ortholog in self.ko_boxes.keys():
+                    for box in self.ko_boxes[ortholog]:
+                        if box not in box2taxon.keys():
+                            box2taxon[box].append(grey_taxa)
+                        else:
+                            box2taxon[box] = [grey_taxa]
 
         name = self.name.split(':')[-1]
         name_pdf = f'{output_basename}_{name}.pdf'
