@@ -18,7 +18,7 @@ import json
 
 from keggpathway_map import KEGGPathwayMap, expand_by_list_column
 
-__version__ = "0.4.1"
+__version__ = "0.4.2"
 
 
 def get_arguments():
@@ -327,7 +327,7 @@ def download_resources(data, resources_directory, taxa_column, metabolic_maps):
     taxa_df = parse_organism(f'{resources_directory}/organism')
     i = 1
     taxon_to_mmap_to_orthologs = {}  # {'Keratinibaculum paraultunense' : {'00190': ['1', '2']}}
-    for taxon in tqdm(taxa, desc=f'Getting information for {len(taxa)} taxa'):
+    for taxon in tqdm(taxa, desc=f'Getting information for {len(taxa) - 1} taxa'):
         kegg_prefix = taxon2prefix(taxon, taxa_df)
         if kegg_prefix is not None:
             taxon_mmaps = get_taxon_maps(kegg_prefix)
@@ -438,7 +438,7 @@ def main():
     if args.transcriptomic_columns:
         args.transcriptomic_columns = args.transcriptomic_columns.split(',')
 
-    ko_column = 'KO (KEGGCharter)' if not hasattr(args, 'ko_column') or not args.ko_column else args.ko_column
+    ko_column = 'KO (KEGGCharter)' if not hasattr(args, 'ko_column') else args.ko_column
 
     if args.resume:
         data = pd.read_csv(f'{args.output}/data_for_charting.tsv', sep='\t')
@@ -472,7 +472,8 @@ def main():
                 number_of_taxa=args.number_of_taxa,
                 grey_taxa=('Other taxa' if args.input_taxonomy is None else args.input_taxonomy))
         else:
-            print(f'Analysis of map {metabolic_maps[i]} failed!')
+            print(f'Analysis of map {metabolic_maps[i]} failed! Map might have been deleted,'
+                  f'for more info raise an issue at https://github.com/iquasere/KEGGCharter/issues')
             i += 1
 
     # TODO - implement multiprocessing for map generation?

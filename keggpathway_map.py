@@ -385,12 +385,12 @@ class KEGGPathwayMap:
                 for ortholog in df[ko_column]:
                     if ortholog in self.ko_boxes.keys():
                         for box in self.ko_boxes[ortholog]:
-                            if box in box2taxon.keys() and (
-                                    box in taxon_to_mmap_to_orthologs[taxon][self.name.split('ko')[1]]):
-                                if taxon not in box2taxon[box]:
-                                    box2taxon[box].append(taxon)
-                            else:
-                                box2taxon[box] = [taxon]
+                            if box in taxon_to_mmap_to_orthologs[taxon][self.name.split('ko')[1]]:
+                                if box in box2taxon.keys():
+                                    if taxon not in box2taxon[box]:
+                                        box2taxon[box].append(taxon)
+                                else:
+                                    box2taxon[box] = [taxon]
             # for every box with KOs identified from the most abundant taxa, sub-boxes are created with colours of the
             # corresponding taxa
             self.pathway_box_list(box2taxon, dic_colors)
