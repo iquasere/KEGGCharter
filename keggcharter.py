@@ -438,7 +438,7 @@ def main():
     if args.transcriptomic_columns:
         args.transcriptomic_columns = args.transcriptomic_columns.split(',')
 
-    ko_column = 'KO (KEGGCharter)' if not hasattr(args, 'ko_column') else args.ko_column
+    ko_column = 'KO (KEGGCharter)' if not hasattr(args, 'ko_column') or not args.ko_column else args.ko_column
 
     if args.resume:
         data = pd.read_csv(f'{args.output}/data_for_charting.tsv', sep='\t')
