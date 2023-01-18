@@ -403,9 +403,9 @@ class KEGGPathwayMap:
                     dic_colors[grey_taxa] = "#7c7272"
                     for box in self.ko_boxes[ortholog]:
                         if box not in box2taxon.keys():
-                            box2taxon[box].append(grey_taxa)
-                        else:
                             box2taxon[box] = [grey_taxa]
+                        else:
+                            box2taxon[box].append(grey_taxa)
         else:
             # if input_taxonomy
             dic_colors = {grey_taxa: "#7c7272"}
