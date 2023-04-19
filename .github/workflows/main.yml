@@ -53,4 +53,4 @@ jobs:
         run: docker run keggcharter /bin/bash -c "ls"
 
       - name: Run KEGGCharter
-        run: docker run keggcharter /bin/bash -c "keggcharter.py -f KEGGCharter/ci/keggcharter_input.tsv -rd resources_directory -mm 00190,00680 -keggc 'Cross-reference (KEGG)' -gcol mg -tcol mt_0.01a,mt_1a,mt_100a,mt_0.01b,mt_1b,mt_100b,mt_0.01c,mt_1c,mt_100c -tc 'Taxonomic lineage (SPECIES)' -mm 00680"
+        run: docker run keggcharter /bin/bash -c "keggcharter -f KEGGCharter/ci/keggcharter_input.tsv -rd resources_directory -mm 00190,00680 -keggc 'Cross-reference (KEGG)' -gcol mg -tcol mt_0.01a,mt_1a,mt_100a,mt_0.01b,mt_1b,mt_100b,mt_0.01c,mt_1c,mt_100c -tc 'Taxonomic lineage (SPECIES)' -mm 00680"

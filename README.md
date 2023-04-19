@@ -40,7 +40,7 @@ An example input file is available [here](https://github.com/iquasere/KEGGCharte
 This is one output of [MOSCA](https://github.com/iquasere/MOSCA), which can be directly inputted to KEGGCharter to obtain
 metabolic representations by running:
 ```
-kegg_charter.py -f MOSCA_Entry_Report.xlsx -gcol mg -tcol mt_0.01a_normalized,mt_1a_normalized,mt_100a_normalized,mt_0.01b_normalized,mt_1b_normalized,mt_100b_normalized,mt_0.01c_normalized,mt_1c_normalized,mt_100c_normalized -keggc "Cross-reference (KEGG)" -o test_keggcharter -tc "Taxonomic lineage (GENUS)"
+keggcharter -f MOSCA_Entry_Report.xlsx -gcol mg -tcol mt_0.01a_normalized,mt_1a_normalized,mt_100a_normalized,mt_0.01b_normalized,mt_1b_normalized,mt_100b_normalized,mt_0.01c_normalized,mt_1c_normalized,mt_100c_normalized -keggc "Cross-reference (KEGG)" -o test_keggcharter -tc "Taxonomic lineage (GENUS)"
 ```
 Just make sure ```MOSCA_Entry_Report.xlsx``` is in the present folder, or indicate the path to it. This command will create
 representations for all 252 default maps of KEGGCharter. If you want to represent for less or more, run with the ```--metabolic-maps``` 
@@ -51,7 +51,7 @@ parameter to indicate to KEGGCharter what maps to run (comma separated).
 KEGGCharter needs KGMLs and EC numbers to boxes relations, which it will automatically retrieve for every map inputted. 
 This might take some time, but you only need to run it once. 
 
-Default directory for storing these files is the folder containing the ```kegg_charter.py``` script, but it can be customized
+Default directory for storing these files is the folder containing the ```keggcharter.py``` script, but it can be customized
 with the ```--resources-directory``` parameter.
 
 ## Outputs
@@ -72,22 +72,12 @@ Figure 2 - KEGG metabolic map of methane metabolism, with differential analysis 
 
 KEGGCharter provides several options for customizing its workflow.
 ```
-usage: kegg_charter.py [-h] [-o OUTPUT] [--tsv] [-t THREADS]
-                       [-mm METABOLIC_MAPS] [-gcol GENOMIC_COLUMNS]
-                       [-tcol TRANSCRIPTOMIC_COLUMNS] [-tls TAXA_LIST]
-                       [-not NUMBER_OF_TAXA] [-keggc KEGG_COLUMN]
-                       [-koc KO_COLUMN] [-ecc EC_COLUMN] [--resume] [-v] -f
-                       FILE -tc TAXA_COLUMN [--show-available-maps]
-
-KEGGCharter - A tool for representing genomic potential and transcriptomic
-expression into KEGG pathways
-
-optional arguments:
+options:
   -h, --help            show this help message and exit
   -o OUTPUT, --output OUTPUT
                         Output directory
-  --tsv                 Results will be outputed in TSV format (and not
-                        EXCEL).
+  -rd RESOURCES_DIRECTORY, --resources-directory RESOURCES_DIRECTORY
+                        Directory for storing KGML and CSV files.
   -mm METABOLIC_MAPS, --metabolic-maps METABOLIC_MAPS
                         IDs of metabolic maps to output
   -gcol GENOMIC_COLUMNS, --genomic-columns GENOMIC_COLUMNS
@@ -95,30 +85,31 @@ optional arguments:
   -tcol TRANSCRIPTOMIC_COLUMNS, --transcriptomic-columns TRANSCRIPTOMIC_COLUMNS
                         Names of columns with transcriptomics quantification
   -tls TAXA_LIST, --taxa-list TAXA_LIST
-                        List of taxa to represent in genomic potential charts
-                        (comma separated)
+                        List of taxa to represent in genomic potential charts (comma separated)
   -not NUMBER_OF_TAXA, --number-of-taxa NUMBER_OF_TAXA
-                        Number of taxa to represent in genomic potential
-                        charts (comma separated)
+                        Number of taxa to represent in genomic potential charts (comma separated)
   -keggc KEGG_COLUMN, --kegg-column KEGG_COLUMN
                         Column with KEGG IDs.
   -koc KO_COLUMN, --ko-column KO_COLUMN
                         Column with KOs.
   -ecc EC_COLUMN, --ec-column EC_COLUMN
                         Column with EC numbers.
-  --resume              Data inputed has already been analyzed by KEGGCharter.
-  -v, --version         show program's version number and exit
+  -iq, --input-quantification
+                        If input table has no quantification, will create a mock quantification column
+  -it INPUT_TAXONOMY, --input-taxonomy INPUT_TAXONOMY
+                        If no taxonomy column exists and there is only one taxon in question.
   -tc TAXA_COLUMN, --taxa-column TAXA_COLUMN
-                        Column with the taxa designations to represent with
-                        KEGGChart
+                        Column with the taxa designations to represent with KEGGCharter
+  --resume              If data inputed has already been analyzed by KEGGCharter.
+  --step STEP           Number of IDs to submit per request through the KEGG API.
+  -v, --version         show program's version number and exit
 
 required named arguments:
   -f FILE, --file FILE  TSV or EXCEL table with information to chart
 
 Special functions:
   --show-available-maps
-                        Outputs KEGG maps IDs and descriptions to the console
-                        (so you may pick the ones you want!)
+                        Outputs KEGG maps IDs and descriptions to the console (so you may pick the ones you want!)
 ```
 
 ### Mock imputation of quantification and taxonomy
