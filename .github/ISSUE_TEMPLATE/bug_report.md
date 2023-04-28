@@ -17,6 +17,6 @@ assignees: ''
 **Screenshots**
 If applicable, add screenshots to help explain your problem. Paste them here.
 
-**Desktop (please complete the following information):**
+**Please complete the following information:**
  - OS:
  - Version of KEGGCharter:
