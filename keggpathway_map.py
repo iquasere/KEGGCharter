@@ -306,19 +306,20 @@ class KEGGPathwayMap:
         nrboxes = len(dataframe.columns.tolist())  # number of samples
 
         for box in dataframe.index.tolist():
+            boxidx = self.ortho_ids_to_pos[box]  # get box index
             colors = dataframe.loc[box].tolist()
             paired = True if nrboxes % 2 == 0 else False
             for i in range(nrboxes):
                 newrecord = create_box_heatmap(
-                    self.orthologs[box], nrboxes, i * 2 - (nrboxes - 1) if paired else i - int(nrboxes / 2),
+                    self.orthologs[boxidx], nrboxes, i * 2 - (nrboxes - 1) if paired else i - int(nrboxes / 2),
                     # if nrboxes = 8, i * 2 - (nrboxes - 1) = -7,-5,-3,-1,1,3,5,7; if nrboxes = 9, i - int(nrboxes / 2) = -4,-3,-2,-1,0,1,2,3,4
                     paired=paired)
                 if newrecord != 1:  # TODO - assess why sometimes get 1
                     newrecord.bgcolor = colors[i]
-                    self.orthologs[box].graphics.append(newrecord)
-            if self.orthologs[box].graphics[
+                    self.orthologs[boxidx].graphics.append(newrecord)
+            if self.orthologs[boxidx].graphics[
                 0].width is not None:  # TODO - should check more deeply why sometimes width is None
-                create_tile_box(self.orthologs[box])
+                create_tile_box(self.orthologs[boxidx])
 
     def grey_boxes(self, box_list):
         for i in box_list:
