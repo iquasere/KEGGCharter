@@ -267,7 +267,7 @@ class KEGGPathwayMap:
             if nrboxes > maxshared:
                 nrboxes = maxshared
 
-            paired = True if nrboxes % 2 == 0 else False
+            paired = nrboxes % 2 == 0
             for i in range(nrboxes):
                 newrecord = create_box_heatmap(
                     self.orthologs[boxidx], nrboxes, i * 2 - (nrboxes - 1) if paired else i - int(nrboxes / 2),
@@ -291,7 +291,6 @@ class KEGGPathwayMap:
         :param log: bol providing the option for a log transformation of data
         :param colormap: str representing a costum matplotlib colormap to be used
         """
-
         if log:
             norm = cm.colors.LogNorm(vmin=dataframe.min().min(), vmax=dataframe.max().max())
         else:
@@ -308,7 +307,7 @@ class KEGGPathwayMap:
         for box in dataframe.index.tolist():
             boxidx = self.ortho_ids_to_pos[box]  # get box index
             colors = dataframe.loc[box].tolist()
-            paired = True if nrboxes % 2 == 0 else False
+            paired = nrboxes % 2 == 0
             for i in range(nrboxes):
                 newrecord = create_box_heatmap(
                     self.orthologs[boxidx], nrboxes, i * 2 - (nrboxes - 1) if paired else i - int(nrboxes / 2),

@@ -18,7 +18,7 @@ import json
 
 from keggpathway_map import KEGGPathwayMap, expand_by_list_column
 
-__version__ = "0.5.1"
+__version__ = "0.6.0"
 
 
 def get_arguments():
@@ -42,21 +42,29 @@ def get_arguments():
     parser.add_argument("-keggc", "--kegg-column", help="Column with KEGG IDs.")
     parser.add_argument("-koc", "--ko-column", help="Column with KOs.")
     parser.add_argument("-ecc", "--ec-column", help="Column with EC numbers.")
+    # TODO - test this argument without UniProt shenanigans
+    parser.add_argument(
+        "-tc", "--taxa-column", default='Taxonomic lineage (GENUS)',
+        help="Column with the taxa designations to represent with KEGGCharter."
+             " NOTE - for valid taxonomies, check: https://www.genome.jp/kegg/catalog/org_list.html")
     parser.add_argument(
         "-iq", "--input-quantification", action="store_true",
         help="If input table has no quantification, will create a mock quantification column")
     parser.add_argument(
         "-it", "--input-taxonomy", default=None,
         help="If no taxonomy column exists and there is only one taxon in question.")
-    # TODO - test this argument without UniProt shenanigans
     parser.add_argument(
-        "-tc", "--taxa-column", default='Taxonomic lineage (GENUS)',
-        help="Column with the taxa designations to represent with KEGGCharter")
+        "--step", default=40, type=int, help="Number of IDs to submit per request through the KEGG API [40]")
+    parser.add_argument(
+        "--map-all", default=False, action="store_true",
+        help="Ignore KEGG taxonomic information. All functions for all KOs will be represented,"
+             " even if they aren't attributed by KEGG to the specific species.")
+    parser.add_argument(
+        "--include-missing-genomes", default=False, action="store_true",
+        help="Map the functions for KOs identified for organisms not present in KEGG Genomes.")
     parser.add_argument(
         "--resume", action="store_true", default=False,
         help="If data inputed has already been analyzed by KEGGCharter.")
-    parser.add_argument(
-        "--step", default=40, type=int, help="Number of IDs to submit per request through the KEGG API [40]")
     parser.add_argument('-v', '--version', action='version', version='KEGGCharter ' + __version__)
 
     required_named = parser.add_argument_group('required named arguments')
@@ -247,6 +255,10 @@ def kegg_metabolic_maps():
 
 
 def write_kgml(mmap, output, organism='ko'):
+    """
+    This function is confusing, in that it both writes the KGML, and parses it.
+    Still, it works, and for now that's enough.
+    """
     data = kegg_get(f"{organism}{mmap}", "kgml").read()
     with open(output, 'w') as f:
         if len(data) > 1:
@@ -320,30 +332,39 @@ def parse_organism(file):
     return pd.read_csv(file, sep='\t', usecols=[1, 2], header=None, index_col=1, names=['prefix', 'name'])
 
 
-def download_resources(data, resources_directory, taxa_column, metabolic_maps):
+def download_resources(
+        data, resources_directory, taxa_column, metabolic_maps, map_all=False, map_non_kegg_genomes=True):
     """
     Download all resources for a given dataframe
     :param data: pandas.DataFrame - dataframe with taxa names in taxa_column
     :param resources_directory: str - directory where to save the resources
     :param taxa_column: str - column name in dataframe with taxa names
     :param metabolic_maps: list - metabolic maps to download
+    :param map_all: bool - if True, attribute all maps and all functions to all taxa, only limit by the identifications
+    :param map_non_kegg_genomes: bool - if True, map non-KEGG genomes to KEGG orthologs
     :return: taxon_to_mmap_to_orthologs - dic with taxon name as key and dic with metabolic maps as values
     """
     download_organism(resources_directory)
     taxa = ['ko'] + list(set(data[data[taxa_column].notnull()][taxa_column]))
     taxa_df = parse_organism(f'{resources_directory}/organism')
-    i = 1
     taxon_to_mmap_to_orthologs = {}  # {'Keratinibaculum paraultunense' : {'00190': ['1', '2']}}
-    for taxon in tqdm(taxa, desc=f'Getting information for {len(taxa) - 1} taxa'):
-        kegg_prefix = taxon2prefix(taxon, taxa_df)
-        if kegg_prefix is not None:
-            taxon_mmaps = get_taxon_maps(kegg_prefix)
-            taxon_mmaps = [mmap for mmap in taxon_mmaps if mmap in metabolic_maps]  # select only inputted maps
-            taxon_to_mmap_to_orthologs[taxon] = write_kgmls(
-                taxon_mmaps, f'{resources_directory}/kc_kgmls', org=kegg_prefix)
-        else:
-            taxon_to_mmap_to_orthologs[taxon] = {}
-        i += 1
+    if map_all:     # attribute all maps and all functions to all taxa, only limit by the data
+        taxon_to_mmap_to_orthologs = {taxon: write_kgmls(
+            metabolic_maps, f'{resources_directory}/kc_kgmls', org='ko') for taxon in taxa}
+    else:
+        for taxon in tqdm(taxa, desc=f'Getting information for {len(taxa) - 1} taxa'):
+            kegg_prefix = taxon2prefix(taxon, taxa_df)
+            if kegg_prefix is not None:
+                taxon_mmaps = get_taxon_maps(kegg_prefix)
+                taxon_mmaps = [mmap for mmap in taxon_mmaps if mmap in metabolic_maps]  # select only inputted maps
+                taxon_to_mmap_to_orthologs[taxon] = write_kgmls(
+                    taxon_mmaps, f'{resources_directory}/kc_kgmls', org=kegg_prefix)
+            else:
+                if map_non_kegg_genomes:
+                    taxon_to_mmap_to_orthologs[taxon] = write_kgmls(
+                        metabolic_maps, f'{resources_directory}/kc_kgmls', org='ko')
+                else:
+                    taxon_to_mmap_to_orthologs[taxon] = {}
     with open(f'{resources_directory}/taxon_to_mmap_to_orthologs.json', 'w') as f:
         json.dump(taxon_to_mmap_to_orthologs, f)
     return taxon_to_mmap_to_orthologs
@@ -459,7 +480,8 @@ def main():
         data.to_csv(f'{args.output}/data_for_charting.tsv', sep='\t', index=False)
         if not args.input_taxonomy:
             taxon_to_mmap_to_orthologs = download_resources(
-                data, args.resources_directory, args.taxa_column, args.metabolic_maps)
+                data, args.resources_directory, args.taxa_column, args.metabolic_maps, map_all=args.map_all,
+                map_non_kegg_genomes=args.include_missing_genomes)
             h = open(f"{args.output}/taxon_to_mmap_to_orthologs.json", "w")
             json.dump(taxon_to_mmap_to_orthologs, h)
         else:
