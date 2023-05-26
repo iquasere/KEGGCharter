@@ -196,7 +196,9 @@ class KEGGPathwayMap:
         :param ec_list: (list) - list from ECs CSV
         """
         self.pathway = pathway
+        self.ko_boxes = {}
         self.set_pathway(ec_list)
+        self.ortho_ids_to_pos = {self.pathway.orthologs[i].id: i for i in range(len(self.pathway.orthologs))}
 
     def __getattr__(self, item):
         m = getattr(self.pathway, item, None)
@@ -208,7 +210,6 @@ class KEGGPathwayMap:
         """
         Set pathway with KEGG Pathway ID
         """
-        self.ko_boxes = {}
         for i in range(len(self.orthologs)):
             set_bgcolor(self.orthologs[i], "#ffffff")  # set all boxes to white
             # self.set_fgcolor(self.pathway.orthologs[i], "#ffffff")             # This might be helpful in the future, if an additional layer of marking is needed
@@ -216,10 +217,11 @@ class KEGGPathwayMap:
                 i].name.split()]  # 'ko:K16157 ko:K16158 ko:K16159' -> ['K16157', 'K16158', 'K16159']
             for ortholog in orthologs_in_box:
                 if ortholog not in self.ko_boxes.keys():
-                    self.ko_boxes[ortholog] = []
-                self.ko_boxes[ortholog].append(i)  # {'K16157':[0,13,432], 'K16158':[4,13,545]}
+                    self.ko_boxes[ortholog] = [self.orthologs[i].id]
+                else:
+                    self.ko_boxes[ortholog].append(self.orthologs[i].id)  # {'K16157':[0,13,432], 'K16158':[4,13,545]}
 
-            # Set name as EC number
+            # Set name as most abundant EC number, if no EC numbers are available use KO
             ecs = ec_list[i].split(',')
             if len(ecs) > 0:
                 self.orthologs[i].graphics[0].name = max(set(ecs), key=ecs.count).split(':')[1]
@@ -260,6 +262,7 @@ class KEGGPathwayMap:
         :param maxshared: int - maximum number of taxa sharing one box
         """
         for box in taxa_in_box.keys():
+            boxidx = self.ortho_ids_to_pos[box]     # get box index
             nrboxes = len(taxa_in_box[box])
             if nrboxes > maxshared:
                 nrboxes = maxshared
@@ -267,16 +270,16 @@ class KEGGPathwayMap:
             paired = True if nrboxes % 2 == 0 else False
             for i in range(nrboxes):
                 newrecord = create_box_heatmap(
-                    self.orthologs[box], nrboxes, i * 2 - (nrboxes - 1) if paired else i - int(nrboxes / 2),
+                    self.orthologs[boxidx], nrboxes, i * 2 - (nrboxes - 1) if paired else i - int(nrboxes / 2),
                     # if nrboxes = 8, i * 2 - (nrboxes - 1) = -7,-5,-3,-1,1,3,5,7
                     # if nrboxes = 9, i - int(nrboxes / 2) = -4,-3,-2,-1,0,1,2,3,4
                     paired=paired)
                 if newrecord != 1:
                     newrecord.bgcolor = dic_colors[taxa_in_box[box][i]]
-                    self.orthologs[box].graphics.append(newrecord)
+                    self.orthologs[boxidx].graphics.append(newrecord)
             # TODO - must check more deeply why sometimes width is None
-            if self.orthologs[box].graphics[0].width is not None:
-                create_tile_box(self.orthologs[box])
+            if self.orthologs[boxidx].graphics[0].width is not None:
+                create_tile_box(self.orthologs[boxidx])
 
     def pathway_boxes_differential(self, dataframe, log=True, colormap="coolwarm"):
         """
@@ -417,7 +420,6 @@ class KEGGPathwayMap:
                             box2taxon[box].append(grey_taxa)
                         else:
                             box2taxon[box] = [grey_taxa]
-
         name = self.name.split(':')[-1]
         name_pdf = f'{output_basename}_{name}.pdf'
         self.to_pdf(name_pdf)
@@ -455,7 +457,7 @@ class KEGGPathwayMap:
         """
         if mmaps2taxa is not None:
             data = data[data[taxa_column].isin(mmaps2taxa[self.name.split('ko')[1]])]
-        df = data.groupby(ko_column)[samples + [ko_column]].sum()
+        df = data.groupby(ko_column)[samples + [ko_column]].sum(numeric_only=True)
         df = df[df.any(axis=1)]
         df['Boxes'] = [self.ko_boxes[ko] if ko in self.ko_boxes.keys() else np.nan for ko in df.index]
         df = df[df['Boxes'].notnull()]

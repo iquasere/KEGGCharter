@@ -18,7 +18,7 @@ import json
 
 from keggpathway_map import KEGGPathwayMap, expand_by_list_column
 
-__version__ = "0.5.0"
+__version__ = "0.5.1"
 
 
 def get_arguments():
@@ -56,7 +56,7 @@ def get_arguments():
         "--resume", action="store_true", default=False,
         help="If data inputed has already been analyzed by KEGGCharter.")
     parser.add_argument(
-        "--step", default=150, type=int, help="Number of IDs to submit per request through the KEGG API.")
+        "--step", default=40, type=int, help="Number of IDs to submit per request through the KEGG API [40]")
     parser.add_argument('-v', '--version', action='version', version='KEGGCharter ' + __version__)
 
     required_named = parser.add_argument_group('required named arguments')
@@ -117,10 +117,15 @@ def read_input_file(file):
     return pd.read_csv(file, sep='\t')
 
 
-def further_information(data, kegg_column=None, ko_column=None, ec_column=None, step=150):
+def further_information(data, output, kegg_column=None, ko_column=None, ec_column=None, step=150):
+    """
+    Adds KEGG, KO and EC information to the input data
+    """
     data = get_cross_references(data, kegg_column=kegg_column, ko_column=ko_column, ec_column=ec_column, step=step)
     main_column = kegg_column if kegg_column is not None else ko_column if ko_column is not None else ec_column
     data = condense_data(data, main_column)
+    data.to_csv(output, sep='\t', index=False)
+    timed_message(f'Results saved to {output}')
     return data, main_column
 
 
@@ -142,8 +147,8 @@ def id2id(input_ids, column, output_column, output_ids_type, step=150, desc=''):
         try:
             result = pd.concat([result, pd.read_csv(
                 kegg_link(output_ids_type, input_ids[i:j]), sep='\t', names=[column, output_column])])
-        except:
-            print(f'IDs conversion broke at index: {i}')
+        except Exception as e:
+            print(f'IDs conversion broke at index: {i}; Error: {e}')
     if output_ids_type == 'ko':
         result[output_column] = result[output_column].apply(lambda x: x.strip('ko:'))
         result[column] = result[column].apply(lambda x: x.strip('ec:'))
@@ -154,11 +159,11 @@ def id2id(input_ids, column, output_column, output_ids_type, step=150, desc=''):
 
 
 def ids_interconversion(data, column, ids_type='kegg', step=150):
-    ids = list(set(data[data[column].notnull()][column]))
+    ids = data[column].dropna().unique().tolist()
     base_desc = 'Converting %i %s to %s through the KEGG API'
     if ids_type == 'kegg':
         # sometimes Kegg IDs come as mfc:BRM9_0145;mfi:DSM1535_1468; (e.g. from UniProt IDs mapping).
-        # Should be no problem since both IDs likely will always represent same functions
+        # Should be no problem to select the first one since both IDs likely will represent the same functions
         trimmed_ids = [ide.split(';')[0] for ide in ids]
         relational = pd.DataFrame([ids, trimmed_ids]).transpose()
         new_ids = id2id(
@@ -171,9 +176,11 @@ def ids_interconversion(data, column, ids_type='kegg', step=150):
         new_ids = id2id(
             ids, column, 'EC number (KEGGCharter)', 'enzyme', desc=base_desc % (len(ids), 'KOs', 'EC numbers'),
             step=step)
-    else:  # ids_type == 'ec':
+    elif ids_type == 'ec':
         new_ids = id2id(
             ids, column, 'KO (KEGGCharter)', 'ko', desc=base_desc % (len(ids), 'EC numbers', 'KOs'), step=step)
+    else:
+        raise ValueError('ids_type must be one of: kegg, ko, ec')
     return pd.merge(data, new_ids, on=column, how='left')
 
 
@@ -412,17 +419,6 @@ def read_input():
         sys.exit(kegg_metabolic_maps().to_string())
     data = read_input_file(args.file)
     timed_message('Data successfully read.')
-    return args, data
-
-
-def main():
-    args, data = read_input()
-
-    if not args.resume:
-        data, main_column = further_information(
-            data, kegg_column=args.kegg_column, ko_column=args.ko_column, ec_column=args.ec_column, step=args.step)
-        data.to_csv(f'{args.output}/KEGGCharter_results.tsv', sep='\t', index=False)
-        timed_message(f'Results saved to {args.output}/KEGGCharter_results.tsv')
 
     if args.input_quantification:
         data['Quantification (KEGGCharter)'] = [1] * len(data)
@@ -433,12 +429,23 @@ def main():
         args.taxa_column = 'Taxon (KEGGCharter)'
         args.taxa_list = args.input_taxonomy
 
-    metabolic_maps = args.metabolic_maps.split(',')
+    args.metabolic_maps = args.metabolic_maps.split(',')
     args.genomic_columns = args.genomic_columns.split(',')
     if args.transcriptomic_columns:
         args.transcriptomic_columns = args.transcriptomic_columns.split(',')
 
-    ko_column = 'KO (KEGGCharter)' if not hasattr(args, 'ko_column') or not args.ko_column else args.ko_column
+    return args, data
+
+
+def main():
+    args, data = read_input()
+
+    if not args.resume:
+        data, main_column = further_information(
+            data, f'{args.output}/KEGGCharter_results.tsv', kegg_column=args.kegg_column, ko_column=args.ko_column,
+            ec_column=args.ec_column, step=args.step)
+
+    ko_column = args.ko_column if args.ko_column else 'KO (KEGGCharter)'
 
     if args.resume:
         data = pd.read_csv(f'{args.output}/data_for_charting.tsv', sep='\t')
@@ -452,27 +459,28 @@ def main():
         data.to_csv(f'{args.output}/data_for_charting.tsv', sep='\t', index=False)
         if not args.input_taxonomy:
             taxon_to_mmap_to_orthologs = download_resources(
-                data, args.resources_directory, args.taxa_column, metabolic_maps)
+                data, args.resources_directory, args.taxa_column, args.metabolic_maps)
             h = open(f"{args.output}/taxon_to_mmap_to_orthologs.json", "w")
             json.dump(taxon_to_mmap_to_orthologs, h)
         else:
             taxon_to_mmap_to_orthologs = None
+
     # '00190': ['Keratinibaculum paraultunense']
     mmaps2taxa = get_mmaps2taxa(taxon_to_mmap_to_orthologs) if not args.input_taxonomy else None
-    timed_message(f'Creating KEGG Pathway representations for {len(metabolic_maps)} metabolic pathways.')
-    for i in range(len(metabolic_maps)):
-        pathway, ec_list = get_pathway_and_ec_list(args.resources_directory, metabolic_maps[i])
+    timed_message(f'Creating KEGG Pathway representations for {len(args.metabolic_maps)} metabolic pathways.')
+    for i in range(len(args.metabolic_maps)):
+        pathway, ec_list = get_pathway_and_ec_list(args.resources_directory, args.metabolic_maps[i])
         if pathway is not None and ec_list is not None:
-            timed_message(f'[{i + 1}/{len(metabolic_maps)}] {pathway.title}')
+            timed_message(f'[{i + 1}/{len(args.metabolic_maps)}] {pathway.title}')
             chart_map(
-                f'{args.resources_directory}/kc_kgmls/ko{metabolic_maps[i]}.xml', ec_list, data,
+                f'{args.resources_directory}/kc_kgmls/ko{args.metabolic_maps[i]}.xml', ec_list, data,
                 taxon_to_mmap_to_orthologs, mmaps2taxa, output=args.output,
                 ko_column=ko_column, taxa_column=args.taxa_column,
                 genomic_columns=args.genomic_columns, transcriptomic_columns=args.transcriptomic_columns,
                 number_of_taxa=args.number_of_taxa,
                 grey_taxa=('Other taxa' if args.input_taxonomy is None else args.input_taxonomy))
         else:
-            print(f'Analysis of map {metabolic_maps[i]} failed! Map might have been deleted,'
+            print(f'Analysis of map {args.metabolic_maps[i]} failed! Map might have been deleted, '
                   f'for more info raise an issue at https://github.com/iquasere/KEGGCharter/issues')
             i += 1
 
