@@ -58,15 +58,15 @@ with the ```--resources-directory``` parameter.
 
 KEGGCharter produces a table from the inputed data with two new columns - KO (KEGG Charter) and EC number (KEGG Charter) - containing the results of conversion of KEGG IDs to KOs and KOs to EC numbers, respectively. This file is saved as ```KEGGCharter_results``` in the output directory. 
 KEGGCharter then represents this information in KEGG metabolic maps. If information is available as result of (meta)genomics analysis, KEGGCharter will localize the boxes whose functions are present in the organisms' genomes, mapping their genomic potential. If (meta)transcriptomics data is available, KEGGCharter will consider the sample as a whole, measuring gene expression and performing a multi-sample comparison for each function in the metabolic maps.
-* maps with genomic information are identified with the prefix "potential_" from genomic potential (figure 1).
+* maps with genomic information are identified with the prefix "potential_" from genomic potential (Fig. 1).
 
 ![ScreenShot](potential_Methane_metabolism.png)
-Figure 1 - KEGG metabolic map of methane metabolism, with identified taxa for each function from a simulated dataset.
+Fig. 1 - KEGG metabolic map of methane metabolism, with identified taxa for each function from a simulated dataset.
 
-* maps with transcriptomic information are identified with the prefix "differential_" from differential expression (figure 2).
+* maps with transcriptomic information are identified with the prefix "differential_" from differential expression (Fig. 2).
 
 ![ScreenShot](differential_Methane_metabolism.png)
-Figure 2 - KEGG metabolic map of methane metabolism, with differential analysis of quantified expression for each function from a simulated dataset.
+Fig. 2 - KEGG metabolic map of methane metabolism, with differential analysis of quantified expression for each function from a simulated dataset.
 
 ## Arguments for KEGGCharter
 
@@ -126,6 +126,36 @@ should be replaced with the value to be presented in the maps. This will attribu
 every protein in the input dataset, which might be useful to, for example, represent "metagenome" in the genomic 
 potential maps.
 This replaces the ```--taxonomic-columns``` parameter.
+
+## Handling missing information in KEGG Genomes
+
+KEGGCharter attempts to download taxa specific KGMLs for organisms in [KEGG Genomes](https://www.genome.jp/kegg/catalog/org_list.html), and use them to determine which functions are available for which organisms. Since KOs are promiscuous, the same KO will likely map for functions that organisms have available in their genomes, and for functions not available for them. Using this workflow of KEGGCharter will produce maps such as the example in Fig. 3.
+
+<img src="https://github.com/iquasere/KEGGCharter/assets/16226371/9e21f249-d6ef-4cda-aea9-39f0d530b9d2" width="600">
+
+Fig. 3 - Original KEGGCharter workflow. Only _arcticus_ had KOs with functions for the TCA cycle attributed that, simultaneously, were present in the KGML for the TCA cycle and the taxon _arcticus_.
+
+This type of workflow uses both taxon-specific information and results from the datasets inputted. All functions represented validated by KEGG (i.e., those functions are available for those organisms), but many identifications may be lacking, since information at KEGG is often incomplete.
+
+### Setting "--include-missing-genomes" represents organisms that are not in KEGG Genomes
+
+Organisms that are not identified in KEGG Genomes can still be represented, if running KEGGCharter with the option `--include-missing-genomes`. All functions for the KOs identified for that organism will be represented (Fig. 4).
+
+<img src="https://github.com/iquasere/KEGGCharter/assets/16226371/35b6818b-d0e1-40be-954d-e6630da7dcea" width="600">
+
+Fig. 4 - KEGGCharter output expanded with `--include-missing-genomes` parameter. _hydrocola_ is not present in KEGG Genomes, but all functions attributed to its KOs are still represented.
+
+This setting allows to still obtain validated information for the taxonomies that are present in KEGG Genomes, while also allowing for representation of organisms not present in KEGG Genomes. It should offer the best compromise between false positives and false negatives.
+
+### Setting "--map-all" ignores KEGG Genomes completely, and represents all functions identified
+
+Functions that are not present organisms specific KGMLs can still be represented, if running KEGGCharter with the option `--map-all`. This will bypass all taxon specific KGMLs, and map all functions for all KOs present in the input dataset (Fig. 5).
+
+<img src="https://github.com/iquasere/KEGGCharter/assets/16226371/96baba0b-e613-4e62-8e31-a8b9358e793e" width="600">
+
+Fig. 5 - KEGGCharter output expanded with `--map-all` parameter. No functions for _oleophylus_ and _franklandus_ were simultaneously present in the KOs identified and available in their KGMLs. In this case, the requirement for presence in the KGMLs is bypassed, and all functions are represented for all taxa.
+
+This setting represents the most information on the KEGG maps, and will produce the most colourful representations, but will likely return many false positives. Maps produced should be analyzed with caution This setting may be required, however, if information for organisms in KEGG Genomes is very incomplete.
 
 ## Referencing KEGGCharter
 
