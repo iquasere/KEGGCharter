@@ -1,0 +1,42 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+  - family-names: "Sequeira"
+    given-names: "João C."
+    orcid: "https://orcid.org/0000-0002-2691-9950"
+  - family-names: "Rocha"
+    given-names: "Miguel"
+    orcid: "https://orcid.org/0000-0001-8439-8172"
+  - family-names: "Alves"
+    given-names: "M. Madalena"
+    orcid: "https://orcid.org/0000-0002-9078-3613"
+  - family-names: "Salvador"
+    given-names: "Andreia F."
+    orcid: "https://orcid.org/0000-0001-6037-4248"
+title: "KEGGCharter - A tool for representing genomic potential and transcriptomic expression into KEGG pathways"
+version: 0.3.3
+doi: "10.1016/J.CSBJ.2022.03.042"
+date-released: 2021-12-10
+url: "https://github.com/iquasere/KEGGCharter"
+preferred-citation:
+  type: article
+  authors:
+    - family-names: "Sequeira"
+      given-names: "João C."
+      orcid: "https://orcid.org/0000-0002-2691-9950"
+    - family-names: "Rocha"
+      given-names: "Miguel"
+      orcid: "https://orcid.org/0000-0001-8439-8172"
+    - family-names: "Alves"
+      given-names: "M. Madalena"
+      orcid: "https://orcid.org/0000-0002-9078-3613"
+    - family-names: "Salvador"
+      given-names: "Andreia F."
+      orcid: "https://orcid.org/0000-0001-6037-4248"
+  doi: "10.1016/J.CSBJ.2022.03.042"
+  journal: "Computational and Structural Biotechnology Journal"
+  start: 1798
+  end: 1810
+  title: "UPIMAPI, reCOGnizer and KEGGCharter: Bioinformatics tools for functional annotation and visualization of (meta)-omics datasets"
+  volume: 20
+  year: 2022
