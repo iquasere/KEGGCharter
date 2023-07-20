@@ -8,7 +8,7 @@ from pathlib import Path
 from subprocess import run
 import sys
 from io import StringIO
-from time import time, gmtime, strftime, sleep
+from time import time, gmtime, strftime
 from Bio.KEGG.REST import kegg_link, kegg_list, kegg_get
 from Bio.KEGG.KGML import KGML_parser
 from matplotlib import pyplot as plt
@@ -18,7 +18,7 @@ import json
 
 from keggpathway_map import KEGGPathwayMap, expand_by_list_column
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"
 
 
 def get_arguments():
@@ -27,13 +27,12 @@ def get_arguments():
         KEGG pathways""", epilog="Input file must be specified.")
     parser.add_argument("-o", "--output", help="Output directory", default='KEGGCharter_results')
     parser.add_argument(
-        "-rd", "--resources-directory", default=sys.path[0], help="Directory for storing KGML and CSV files.")
+        "-rd", "--resources-directory", default=os.path.expanduser("~/keggcharter_resources"),
+        help="Directory for storing KGML and CSV files [~/keggcharter_resources]")
     parser.add_argument(
         "-mm", "--metabolic-maps", help="IDs of metabolic maps to output",
         default=','.join(keggcharter_prokaryotic_maps()))
-    parser.add_argument("-gcol", "--genomic-columns", help="Names of columns with genomic identification")
-    parser.add_argument(
-        "-tcol", "--transcriptomic-columns", help="Names of columns with transcriptomics quantification")
+    parser.add_argument("-qcol", "--quantification-columns", help="Names of columns with quantification")
     parser.add_argument(
         "-tls", "--taxa-list", help="List of taxa to represent in genomic potential charts (comma separated)")  # TODO - must be tested
     parser.add_argument(
@@ -46,7 +45,7 @@ def get_arguments():
     parser.add_argument(
         "-tc", "--taxa-column", default='Taxonomic lineage (GENUS)',
         help="Column with the taxa designations to represent with KEGGCharter."
-             " NOTE - for valid taxonomies, check: https://www.genome.jp/kegg/catalog/org_list.html")
+             " NOTE: for valid taxonomies, check: https://www.genome.jp/kegg/catalog/org_list.html")
     parser.add_argument(
         "-iq", "--input-quantification", action="store_true",
         help="If input table has no quantification, will create a mock quantification column")
@@ -82,14 +81,15 @@ def get_arguments():
         if not os.path.isdir(directory):
             Path(directory).mkdir(parents=True, exist_ok=True)
             print(f'Created {directory}')
-    if not hasattr(args, 'genomic_columns'):
+    if not hasattr(args, 'quantification_columns'):
         input_quantification = str2bool(
-            'No genomic columns specified! See https://github.com/iquasere/KEGGCharter#mock-imputation-of-'
+            'No quantification columns specified! See https://github.com/iquasere/KEGGCharter#mock-imputation-of-'
             'quantification-and-taxonomy for more details. Do you want to use mock quantification? [y/N]')
         if input_quantification:
             args.input_quantification = True
         else:
-            exit('No genomic columns specified!')
+            exit('No quantification columns specified!')
+    args.quantification_columns = args.quantification_columns.split(',')
     return args
 
 
@@ -150,7 +150,7 @@ def id2id(input_ids, column, output_column, output_ids_type, step=150, desc=''):
     :return: (list) - (list,list) - KEGG ID genes converted and ko IDs
     """
     result = pd.DataFrame(columns=[column, output_column])
-    for i in tqdm(range(0, len(input_ids), step), desc=desc):
+    for i in tqdm(range(0, len(input_ids), step), desc=desc, ascii=' >='):
         j = min(i + step, len(input_ids))
         try:
             result = pd.concat([result, pd.read_csv(
@@ -222,7 +222,7 @@ def condense_data(data, main_column):
     return pd.merge(data, pd.concat([onlykos, wecs]), on=main_column, how='left').drop_duplicates()
 
 
-def prepare_data_for_charting(data, mt_cols=None, ko_column='KO (KEGGCharter)', ko_from_uniprot=False):
+def prepare_data_for_charting(data, q_cols=None, ko_column='KO (KEGGCharter)', ko_from_uniprot=False):
     nokos = data[data[ko_column].isnull()]
     wkos = data[data[ko_column].notnull()].reset_index(drop=True)
     if ko_from_uniprot:
@@ -230,8 +230,8 @@ def prepare_data_for_charting(data, mt_cols=None, ko_column='KO (KEGGCharter)', 
         wkos[ko_column] = wkos[ko_column].apply(lambda x: x.rstrip(';'))
     # Expand KOs column if some elements are in the form KO1,KO2,...
     wkos[ko_column] = wkos[ko_column].apply(lambda x: x.split(','))
-    if mt_cols is not None:
-        for col in mt_cols:
+    if q_cols is not None:
+        for col in q_cols:      # Normalize by the number of KOs in the column
             wkos[col] = wkos[col] / wkos[ko_column].apply(lambda x: len(x))
     wkos = expand_by_list_column(wkos, column=ko_column)
     data = pd.concat([wkos, nokos])
@@ -276,7 +276,7 @@ def write_kgmls(mmaps, out_dir, max_tries=3, org='ko'):
     i = 1
     if len(mmaps) == 0:
         return mmap_to_orthologs
-    for mmap in tqdm(mmaps, desc=f'Getting [{len(mmaps)}] KGMLs for taxon [{org}]'):
+    for mmap in tqdm(mmaps, desc=f'Getting [{len(mmaps)}] KGMLs for taxon [{org}]', ascii=' >='):
         tries = 0
         done = False
         while tries < max_tries and not done:
@@ -291,7 +291,7 @@ def set_text_boxes_kgml(kgml_filename, out_filename, desc=''):
     handler = KGML_parser.read(open(kgml_filename))
     # Set text in boxes to EC numbers
     with open(out_filename, 'w') as f:
-        for ortholog_rec in tqdm(handler.orthologs, desc=desc):
+        for ortholog_rec in tqdm(handler.orthologs, desc=desc, ascii=' >='):
             lines = []
             kos = ortholog_rec.name.split()
             lines += kegg_link("enzyme", kos).read().split('\n')
@@ -352,7 +352,7 @@ def download_resources(
         taxon_to_mmap_to_orthologs = {taxon: write_kgmls(
             metabolic_maps, f'{resources_directory}/kc_kgmls', org='ko') for taxon in taxa}
     else:
-        for taxon in tqdm(taxa, desc=f'Getting information for {len(taxa) - 1} taxa'):
+        for taxon in tqdm(taxa, desc=f'Getting information for {len(taxa) - 1} taxa', ascii=' >='):
             kegg_prefix = taxon2prefix(taxon, taxa_df)
             if kegg_prefix is not None:
                 taxon_mmaps = get_taxon_maps(kegg_prefix)
@@ -387,21 +387,18 @@ def get_mmaps2taxa(taxon_to_mmap_to_orthologs):
 
 def chart_map(
         kgml_filename, ec_list, data, taxon_to_mmap_to_orthologs, mmaps2taxa, output=None, ko_column=None,
-        taxa_column=None, genomic_columns=None, transcriptomic_columns=None, number_of_taxa=10,
-        grey_taxa='Other taxa'):
-    if genomic_columns:  # when not set is None
-        mmap = KGML_parser.read(open(kgml_filename))
-        kegg_pathway_map = KEGGPathwayMap(pathway=mmap, ec_list=ec_list)
-        kegg_pathway_map.genomic_potential_taxa(
-            data, genomic_columns, ko_column, taxon_to_mmap_to_orthologs, mmaps2taxa=mmaps2taxa,
-            taxa_column=taxa_column, output_basename=f'{output}/potential', number_of_taxa=number_of_taxa,
-            grey_taxa=grey_taxa)
-    if transcriptomic_columns:  # when not set is None
-        mmap = KGML_parser.read(open(kgml_filename))
-        kegg_pathway_map = KEGGPathwayMap(pathway=mmap, ec_list=ec_list)
-        kegg_pathway_map.differential_expression_sample(
-            data, transcriptomic_columns, ko_column, mmaps2taxa, taxa_column=taxa_column,
-            output_basename=f'{output}/differential', log=False)
+        taxa_column=None, quantification_columns=None, number_of_taxa=10, grey_taxa='Other taxa'):
+    mmap = KGML_parser.read(open(kgml_filename))
+    kegg_pathway_map = KEGGPathwayMap(pathway=mmap, ec_list=ec_list)
+    kegg_pathway_map.genomic_potential_taxa(
+        data, quantification_columns, ko_column, taxon_to_mmap_to_orthologs, mmaps2taxa=mmaps2taxa,
+        taxa_column=taxa_column, output_basename=f'{output}/potential', number_of_taxa=number_of_taxa,
+        grey_taxa=grey_taxa)
+    mmap = KGML_parser.read(open(kgml_filename))
+    kegg_pathway_map = KEGGPathwayMap(pathway=mmap, ec_list=ec_list)
+    kegg_pathway_map.differential_expression_sample(
+        data, quantification_columns, ko_column, mmaps2taxa, taxa_column=taxa_column,
+        output_basename=f'{output}/differential', log=False)
     plt.close()
 
 
@@ -443,7 +440,7 @@ def read_input():
 
     if args.input_quantification:
         data['Quantification (KEGGCharter)'] = [1] * len(data)
-        args.genomic_columns = 'Quantification (KEGGCharter)'
+        args.quantification_columns = ['Quantification (KEGGCharter)']
 
     if args.input_taxonomy:
         data['Taxon (KEGGCharter)'] = [args.input_taxonomy] * len(data)
@@ -451,14 +448,11 @@ def read_input():
         args.taxa_list = args.input_taxonomy
 
     args.metabolic_maps = args.metabolic_maps.split(',')
-    args.genomic_columns = args.genomic_columns.split(',')
-    if args.transcriptomic_columns:
-        args.transcriptomic_columns = args.transcriptomic_columns.split(',')
 
     return args, data
 
 
-def main():
+def keggcharter():
     args, data = read_input()
 
     if not args.resume:
@@ -476,7 +470,7 @@ def main():
         else:
             taxon_to_mmap_to_orthologs = None
     else:
-        data = prepare_data_for_charting(data, ko_column=ko_column, mt_cols=args.transcriptomic_columns)
+        data = prepare_data_for_charting(data, ko_column=ko_column, q_cols=args.quantification_columns)
         data.to_csv(f'{args.output}/data_for_charting.tsv', sep='\t', index=False)
         if not args.input_taxonomy:
             taxon_to_mmap_to_orthologs = download_resources(
@@ -498,8 +492,7 @@ def main():
                 f'{args.resources_directory}/kc_kgmls/ko{args.metabolic_maps[i]}.xml', ec_list, data,
                 taxon_to_mmap_to_orthologs, mmaps2taxa, output=args.output,
                 ko_column=ko_column, taxa_column=args.taxa_column,
-                genomic_columns=args.genomic_columns, transcriptomic_columns=args.transcriptomic_columns,
-                number_of_taxa=args.number_of_taxa,
+                quantification_columns=args.quantification_columns, number_of_taxa=args.number_of_taxa,
                 grey_taxa=('Other taxa' if args.input_taxonomy is None else args.input_taxonomy))
         else:
             print(f'Analysis of map {args.metabolic_maps[i]} failed! Map might have been deleted, '
@@ -517,5 +510,5 @@ def main():
 
 if __name__ == '__main__':
     start_time = time()
-    main()
+    keggcharter()
     print(f'KEGGCharter analysis finished in {strftime("%Hh%Mm%Ss", gmtime(time() - start_time))}')

@@ -31,7 +31,7 @@ To run KEGGCharter, an input file must be supplied - see ```Testing KEGGCharter`
 with genomic and/or transcriptomic information, as well as one column with either KEGG IDs, KOs or EC numbers, must be 
 present in the file and specified through the command line.
 ```
-python kegg_charter.py -f input_file.xlsx -o output_folder -mgc mg_column1,mg_column2 -mtc mt_column1,mt_column2 ...
+keggcharter.py -f input_file.tsv -o output_folder -mgc mg_column1,mg_column2 -mtc mt_column1,mt_column2 ...
 ```
 
 ## Testing KEGGCharter
