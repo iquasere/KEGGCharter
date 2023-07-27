@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from argparse import ArgumentParser, ArgumentTypeError
+from multiprocessing import cpu_count, Pool, Manager
 import numpy as np
 import os
 import pandas as pd
@@ -47,7 +48,7 @@ def get_arguments():
         help="Column with the taxa designations to represent with KEGGCharter."
              " NOTE: for valid taxonomies, check: https://www.genome.jp/kegg/catalog/org_list.html")
     parser.add_argument(
-        "-iq", "--input-quantification", action="store_true",
+        "-iq", "--input-quantification", action="store_true", default=False,
         help="If input table has no quantification, will create a mock quantification column")
     parser.add_argument(
         "-it", "--input-taxonomy", default=None,
@@ -81,14 +82,15 @@ def get_arguments():
         if not os.path.isdir(directory):
             Path(directory).mkdir(parents=True, exist_ok=True)
             print(f'Created {directory}')
-    if not hasattr(args, 'quantification_columns'):
-        input_quantification = str2bool(
+    if not hasattr(args, 'quantification_columns') and not args.input_quantification:
+        args.input_quantification = str2bool(
             'No quantification columns specified! See https://github.com/iquasere/KEGGCharter#mock-imputation-of-'
-            'quantification-and-taxonomy for more details. Do you want to use mock quantification? [y/N]')
-        if input_quantification:
-            args.input_quantification = True
-        else:
-            exit('No quantification columns specified!')
+            'quantification-and-taxonomy for more details. Do you want to use mock quantification? [Y/N]')
+        if not args.input_quantification:
+            exit('No quantification columns available!')
+    if args.input_quantification:
+        args.input_quantification = True
+        args.quantification_columns = 'Quantification (KEGGCharter)'
     args.quantification_columns = args.quantification_columns.split(',')
     return args
 
@@ -114,15 +116,15 @@ def run_command(bash_command, print_command=True, stdout=None, stderr=None):
     run(bash_command.split(), stdout=stdout, stderr=stderr)
 
 
-def download_organism(directory):
-    if not os.path.isfile(f"{directory}/organism"):
-        run_command(f'wget http://rest.kegg.jp/list/organism -P {directory}')
+def split(a, n):
+    k, m = divmod(len(a), n)
+    return (a[i * k + min(i, m):(i + 1) * k + min(i + 1, m)] for i in range(n))
 
 
 def read_input_file(file):
     if file.endswith('.xlsx'):
         return pd.read_excel(file)
-    return pd.read_csv(file, sep='\t')
+    return pd.read_csv(file, sep='\t', low_memory=False)
 
 
 def further_information(data, output, kegg_column=None, ko_column=None, ec_column=None, step=150):
@@ -311,20 +313,28 @@ def taxon2prefix(taxon_name, organism_df):
     if taxon_name == 'ko':
         return 'ko'
     if taxon_name in organism_df.index:  # exactly the same
-        return organism_df.loc[taxon_name][0]
+        if len(organism_df.loc[taxon_name.split(' (')[0]]) > 1:
+            return organism_df.loc[taxon_name, 'prefix'][0]
+        return organism_df.loc[taxon_name.split(' (')[0], 'prefix']
     if taxon_name.split(' (')[0] in organism_df.index:  # Homo sapiens (human) -> Homo sapiens
-        return organism_df.loc[taxon_name.split(' (')[0]][0]
+        if len(organism_df.loc[taxon_name.split(' (')[0]]) > 1:
+            return organism_df.loc[taxon_name.split(' (')[0], 'prefix'][0]
+        return organism_df.loc[taxon_name.split(' (')[0], 'prefix']
     df = organism_df.reset_index()
     possible_prefixes = df[df.name.str.contains(taxon_name)].prefix.tolist()
     if len(possible_prefixes) > 0:
-        return df[df.name.str.contains(taxon_name)].prefix.tolist()[0]  # select the first strain
+        return possible_prefixes[0]  # select the first strain
     return None  # not found in taxon to KEGG prefix conversion
 
 
 def get_taxon_maps(kegg_prefix):
     if kegg_prefix is None:
         return []
-    df = pd.read_csv(StringIO(kegg_list("pathway", kegg_prefix).read()), sep='\t', header=None)
+    try:
+        df = pd.read_csv(StringIO(kegg_list("pathway", kegg_prefix).read()), sep='\t', header=None)
+    except TimeoutError as e:
+        print(f'Failed with exception: {e}')
+        return []
     return df[0].apply(lambda x: x.split(kegg_prefix)[1]).tolist()
 
 
@@ -333,39 +343,40 @@ def parse_organism(file):
 
 
 def download_resources(
-        data, resources_directory, taxa_column, metabolic_maps, map_all=False, map_non_kegg_genomes=True):
+        data, directory, taxa_column, metabolic_maps, map_all=False, map_non_kegg_genomes=True):
     """
     Download all resources for a given dataframe
     :param data: pandas.DataFrame - dataframe with taxa names in taxa_column
-    :param resources_directory: str - directory where to save the resources
+    :param directory: str - directory where to save the resources
     :param taxa_column: str - column name in dataframe with taxa names
     :param metabolic_maps: list - metabolic maps to download
     :param map_all: bool - if True, attribute all maps and all functions to all taxa, only limit by the identifications
     :param map_non_kegg_genomes: bool - if True, map non-KEGG genomes to KEGG orthologs
     :return: taxon_to_mmap_to_orthologs - dic with taxon name as key and dic with metabolic maps as values
     """
-    download_organism(resources_directory)
-    taxa = ['ko'] + list(set(data[data[taxa_column].notnull()][taxa_column]))
-    taxa_df = parse_organism(f'{resources_directory}/organism')
-    taxon_to_mmap_to_orthologs = {}  # {'Keratinibaculum paraultunense' : {'00190': ['1', '2']}}
-    if map_all:     # attribute all maps and all functions to all taxa, only limit by the data
+    if not os.path.isfile(f"{directory}/organism"):
+        run_command(f'wget http://rest.kegg.jp/list/organism -P {directory}')
+    taxa = ['ko'] + list(set(data[data[taxa_column].notnull()][taxa_column])) if not map_all else ['ko']
+    taxa_df = parse_organism(f'{directory}/organism')
+    taxon_to_mmap_to_orthologs = {}     # {'Keratinibaculum paraultunense' : {'00190': ['1', '2']}}
+    if map_all:                         # attribute all maps and all functions to all taxa, only limit by the data
         taxon_to_mmap_to_orthologs = {taxon: write_kgmls(
-            metabolic_maps, f'{resources_directory}/kc_kgmls', org='ko') for taxon in taxa}
+            metabolic_maps, f'{directory}/kc_kgmls', org='ko') for taxon in taxa}
     else:
-        for taxon in tqdm(taxa, desc=f'Getting information for {len(taxa) - 1} taxa', ascii=' >='):
+        for taxon in tqdm(taxa, desc=f'Getting information for {len(taxa)} taxa', ascii=' >='):
             kegg_prefix = taxon2prefix(taxon, taxa_df)
             if kegg_prefix is not None:
                 taxon_mmaps = get_taxon_maps(kegg_prefix)
                 taxon_mmaps = [mmap for mmap in taxon_mmaps if mmap in metabolic_maps]  # select only inputted maps
                 taxon_to_mmap_to_orthologs[taxon] = write_kgmls(
-                    taxon_mmaps, f'{resources_directory}/kc_kgmls', org=kegg_prefix)
+                    taxon_mmaps, f'{directory}/kc_kgmls', org=kegg_prefix)
             else:
                 if map_non_kegg_genomes:
                     taxon_to_mmap_to_orthologs[taxon] = write_kgmls(
-                        metabolic_maps, f'{resources_directory}/kc_kgmls', org='ko')
+                        metabolic_maps, f'{directory}/kc_kgmls', org='ko')
                 else:
                     taxon_to_mmap_to_orthologs[taxon] = {}
-    with open(f'{resources_directory}/taxon_to_mmap_to_orthologs.json', 'w') as f:
+    with open(f'{directory}/taxon_to_mmap_to_orthologs.json', 'w') as f:
         json.dump(taxon_to_mmap_to_orthologs, f)
     return taxon_to_mmap_to_orthologs
 
@@ -463,7 +474,7 @@ def keggcharter():
     ko_column = args.ko_column if args.ko_column else 'KO (KEGGCharter)'
 
     if args.resume:
-        data = pd.read_csv(f'{args.output}/data_for_charting.tsv', sep='\t')
+        data = pd.read_csv(f'{args.output}/data_for_charting.tsv', sep='\t', low_memory=False)
         if not args.input_taxonomy:
             with open(f'{args.output}/taxon_to_mmap_to_orthologs.json') as h:
                 taxon_to_mmap_to_orthologs = json.load(h)
