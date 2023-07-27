@@ -5,7 +5,7 @@ RUN buildDeps='build-essential zlib1g-dev' \
 && apt-get install -y $buildDeps --no-install-recommends \
 && rm -rf /var/lib/apt/lists/* \
 && git clone https://github.com/iquasere/KEGGCharter.git \
-&& conda install -c conda-forge -y mamba=1.0.0 \
+&& conda install -c conda-forge -y mamba=1.3.1 \
 && mamba env update --file KEGGCharter/envs/environment.yml --name base \
 && bash KEGGCharter/envs/ci_build.sh \
 && conda clean --all -y \
