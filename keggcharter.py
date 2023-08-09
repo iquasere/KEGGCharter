@@ -9,17 +9,18 @@ from pathlib import Path
 from subprocess import run
 import sys
 from io import StringIO
-from time import time, gmtime, strftime
+from time import time, gmtime, strftime, sleep
 from Bio.KEGG.REST import kegg_link, kegg_list, kegg_get
 from Bio.KEGG.KGML import KGML_parser
 from matplotlib import pyplot as plt
 from tqdm import tqdm
 from glob import glob
 import json
-
+import warnings
 from keggpathway_map import KEGGPathwayMap, expand_by_list_column
 
 __version__ = "0.7.0"
+warnings.filterwarnings("ignore", 'This pattern has match groups')  # taxon2prefix raises an annoying warning
 
 
 def get_arguments():
@@ -312,29 +313,25 @@ def taxon2prefix(taxon_name, organism_df):
     """
     if taxon_name == 'ko':
         return 'ko'
-    if taxon_name in organism_df.index:  # exactly the same
+    if taxon_name in organism_df.index:                     # taxon is found as it is
         if len(organism_df.loc[taxon_name.split(' (')[0]]) > 1:
             return organism_df.loc[taxon_name, 'prefix'][0]
         return organism_df.loc[taxon_name.split(' (')[0], 'prefix']
-    if taxon_name.split(' (')[0] in organism_df.index:  # Homo sapiens (human) -> Homo sapiens
+    if taxon_name.split(' (')[0] in organism_df.index:      # Homo sapiens (human) -> Homo sapiens
         if len(organism_df.loc[taxon_name.split(' (')[0]]) > 1:
             return organism_df.loc[taxon_name.split(' (')[0], 'prefix'][0]
         return organism_df.loc[taxon_name.split(' (')[0], 'prefix']
     df = organism_df.reset_index()
     possible_prefixes = df[df.name.str.contains(taxon_name)].prefix.tolist()
     if len(possible_prefixes) > 0:
-        return possible_prefixes[0]  # select the first strain
-    return None  # not found in taxon to KEGG prefix conversion
+        return possible_prefixes[0]                         # select the first strain
+    return None         # not found in taxon to KEGG prefix conversion
 
 
 def get_taxon_maps(kegg_prefix):
     if kegg_prefix is None:
         return []
-    try:
-        df = pd.read_csv(StringIO(kegg_list("pathway", kegg_prefix).read()), sep='\t', header=None)
-    except TimeoutError as e:
-        print(f'Failed with exception: {e}')
-        return []
+    df = pd.read_csv(StringIO(kegg_list("pathway", kegg_prefix).read()), sep='\t', header=None)
     return df[0].apply(lambda x: x.split(kegg_prefix)[1]).tolist()
 
 
@@ -363,19 +360,27 @@ def download_resources(
         taxon_to_mmap_to_orthologs = {taxon: write_kgmls(
             metabolic_maps, f'{directory}/kc_kgmls', org='ko') for taxon in taxa}
     else:
-        for taxon in tqdm(taxa, desc=f'Getting information for {len(taxa)} taxa', ascii=' >='):
-            kegg_prefix = taxon2prefix(taxon, taxa_df)
-            if kegg_prefix is not None:
-                taxon_mmaps = get_taxon_maps(kegg_prefix)
-                taxon_mmaps = [mmap for mmap in taxon_mmaps if mmap in metabolic_maps]  # select only inputted maps
-                taxon_to_mmap_to_orthologs[taxon] = write_kgmls(
-                    taxon_mmaps, f'{directory}/kc_kgmls', org=kegg_prefix)
-            else:
-                if map_non_kegg_genomes:
-                    taxon_to_mmap_to_orthologs[taxon] = write_kgmls(
-                        metabolic_maps, f'{directory}/kc_kgmls', org='ko')
-                else:
-                    taxon_to_mmap_to_orthologs[taxon] = {}
+        prefixes = [(taxon, taxon2prefix(taxon, taxa_df)) for taxon in tqdm(
+            taxa, desc='Getting KEGG prefixes', ascii=' >=')]
+        for taxon, kegg_prefix in tqdm(prefixes, desc=f'Getting information for {len(taxa)} taxa', ascii=' >='):
+            done = False
+            while not done:
+                try:
+                    if kegg_prefix is not None:
+                        taxon_mmaps = get_taxon_maps(kegg_prefix)
+                        taxon_mmaps = [mmap for mmap in taxon_mmaps if mmap in metabolic_maps]  # select only inputted maps
+                        taxon_to_mmap_to_orthologs[taxon] = write_kgmls(
+                            taxon_mmaps, f'{directory}/kc_kgmls', org=kegg_prefix)
+                    else:
+                        if map_non_kegg_genomes:
+                            taxon_to_mmap_to_orthologs[taxon] = write_kgmls(
+                                metabolic_maps, f'{directory}/kc_kgmls', org='ko')
+                        else:
+                            taxon_to_mmap_to_orthologs[taxon] = {}
+                    done = True
+                except Exception as e:
+                    print(f'Failed with exception: {e}. Trying again in one minute...')
+                    sleep(60)
     with open(f'{directory}/taxon_to_mmap_to_orthologs.json', 'w') as f:
         json.dump(taxon_to_mmap_to_orthologs, f)
     return taxon_to_mmap_to_orthologs
@@ -459,28 +464,24 @@ def read_input():
         args.taxa_list = args.input_taxonomy
 
     args.metabolic_maps = args.metabolic_maps.split(',')
+    ko_column = args.ko_column if args.ko_column else 'KO (KEGGCharter)'
 
-    return args, data
+    return args, data, ko_column
 
 
 def keggcharter():
-    args, data = read_input()
+    args, data, ko_column = read_input()
 
-    if not args.resume:
-        data, main_column = further_information(
-            data, f'{args.output}/KEGGCharter_results.tsv', kegg_column=args.kegg_column, ko_column=args.ko_column,
-            ec_column=args.ec_column, step=args.step)
-
-    ko_column = args.ko_column if args.ko_column else 'KO (KEGGCharter)'
-
+    taxon_to_mmap_to_orthologs = None
     if args.resume:
         data = pd.read_csv(f'{args.output}/data_for_charting.tsv', sep='\t', low_memory=False)
         if not args.input_taxonomy:
             with open(f'{args.output}/taxon_to_mmap_to_orthologs.json') as h:
                 taxon_to_mmap_to_orthologs = json.load(h)
-        else:
-            taxon_to_mmap_to_orthologs = None
     else:
+        data, main_column = further_information(
+            data, f'{args.output}/KEGGCharter_results.tsv', kegg_column=args.kegg_column, ko_column=args.ko_column,
+            ec_column=args.ec_column, step=args.step)
         data = prepare_data_for_charting(data, ko_column=ko_column, q_cols=args.quantification_columns)
         data.to_csv(f'{args.output}/data_for_charting.tsv', sep='\t', index=False)
         if not args.input_taxonomy:
@@ -489,8 +490,7 @@ def keggcharter():
                 map_non_kegg_genomes=args.include_missing_genomes)
             h = open(f"{args.output}/taxon_to_mmap_to_orthologs.json", "w")
             json.dump(taxon_to_mmap_to_orthologs, h)
-        else:
-            taxon_to_mmap_to_orthologs = None
+            h.close()
 
     # '00190': ['Keratinibaculum paraultunense']
     mmaps2taxa = get_mmaps2taxa(taxon_to_mmap_to_orthologs) if not args.input_taxonomy else None
