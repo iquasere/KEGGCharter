@@ -6,7 +6,7 @@ from PIL import Image
 import numpy as np
 import os
 from subprocess import run
-from matplotlib import pyplot as plt, colors, cm
+from matplotlib import pyplot as plt, colors, colormaps, cm
 import pandas as pd
 from re import search
 import sys
@@ -173,11 +173,10 @@ def taxa_colors(hex_values=None, ncolor=1):
     """
     if not hex_values:  # if no colors are given creates a list of discrete hex colors
         color_scheme = (
-            cm.get_cmap('Pastel2', 8) if ncolor <= 8
-            else cm.get_cmap("Set3", 12) if ncolor <= 12
-            else cm.get_cmap("rainbow", ncolor))  # if ncolor > 12 a continuous colormap is used instead
+            colormaps.get_cmap('Pastel2').resampled(8) if ncolor <= 8
+            else colormaps.get_cmap("Set3").resampled(12) if ncolor <= 12
+            else colormaps.get_cmap("rainbow").resampled(ncolor))  # if ncolor > 12 a continuous colormap is used instead
         return [colors.to_hex(color_scheme(i)) for i in range(ncolor)]
-
     for hex_value in hex_values:
         if not search(r'^#(?:[0-9a-fA-F]{3}){1,2}$', hex_value):
             sys.exit(Exception("Colors aren't valid hex codes"))
@@ -316,8 +315,7 @@ class KEGGPathwayMap:
                 if newrecord != 1:  # TODO - assess why sometimes get 1
                     newrecord.bgcolor = colors[i]
                     self.orthologs[boxidx].graphics.append(newrecord)
-            if self.orthologs[boxidx].graphics[
-                0].width is not None:  # TODO - should check more deeply why sometimes width is None
+            if self.orthologs[boxidx].graphics[0].width is not None:  # TODO - should check more deeply why sometimes width is None
                 create_tile_box(self.orthologs[boxidx])
 
     def grey_boxes(self, box_list):
@@ -358,13 +356,14 @@ class KEGGPathwayMap:
         return data.index.tolist()[:number_of_taxa]
 
     def genomic_potential_taxa(
-            self, data, q_cols, ko_column, taxon_to_mmap_to_orthologs, mmaps2taxa,
+            self, data, samples, ko_column, taxon_to_mmap_to_orthologs, mmaps2taxa,
             taxa_column='Taxonomic lineage (GENUS)', output_basename=None, number_of_taxa=10, grey_taxa='Other taxa'):
         """
         Represents the genomic potential of the dataset for a certain taxa level,
         by coloring each taxon with a unique color
         :param data: pandas.DataFrame with data already processed by KEGGPathway
-        :param q_cols: list of column names of the dataset corresponding to expression values
+        :param samples: list of str column names of the dataset correspoding to
+        expression values
         :param taxon_to_mmap_to_orthologs: dict - {'Keratinibaculum paraultunense' : {'00190': ['1', '2']}}
         :param mmaps2taxa: dict - of taxa to color
         :param ko_column: str - column with KOs
@@ -378,11 +377,11 @@ class KEGGPathwayMap:
             # for every taxon, check all boxes it is in, and save that info to box2taxon
             data = data[data[taxa_column].isin(mmaps2taxa[self.name.split('ko')[1]]) &
                         data[ko_column].isin(self.ko_boxes.keys())]
-            taxa = self.most_abundant_taxa(data, q_cols, taxa_column, number_of_taxa=number_of_taxa)
+            taxa = self.most_abundant_taxa(data, samples, taxa_column, number_of_taxa=number_of_taxa)
             taxonomy_colors = taxa_colors(ncolor=len(taxa))
             dic_colors = {taxa[i]: taxonomy_colors[i] for i in range(len(taxa))}
             for taxon in dic_colors.keys():
-                df = data[data[taxa_column] == taxon][q_cols + [ko_column]]
+                df = data[data[taxa_column] == taxon][samples + [ko_column]]
                 df = df[df.any(axis=1)]
                 for ortholog in df[ko_column]:
                     if ortholog in self.ko_boxes.keys():
@@ -391,8 +390,8 @@ class KEGGPathwayMap:
                                 if box in box2taxon.keys():
                                     if taxon not in box2taxon[box]:
                                         box2taxon[box].append(taxon)
-                                else:
-                                    box2taxon[box] = [taxon]
+                                    else:
+                                        box2taxon[box] = [taxon]
             # for every box with KOs identified from the most abundant taxa, sub-boxes are created with colours of the
             # corresponding taxa
             self.pathway_box_list(box2taxon, dic_colors)
