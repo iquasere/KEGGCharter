@@ -119,9 +119,9 @@ def resize_image(image_pil, ratio=None, width=None, height=None):
     """
     if ratio:
         return image_pil.resize((image_pil.width * ratio,
-                                 image_pil.height * ratio), Image.ANTIALIAS)
+                                 image_pil.height * ratio), Image.LANCZOS)
     elif width and height:
-        return image_pil.resize((width, height), Image.ANTIALIAS)
+        return image_pil.resize((width, height), Image.LANCZOS)
     else:
         return None
 
@@ -145,7 +145,7 @@ def add_blank_space(image_pil, width, height, image_mode='RGB'):
         resize_width = round(ratio_h * image_pil.width)
         resize_height = height
     image_resize = image_pil.resize((resize_width, resize_height),
-                                    Image.ANTIALIAS)
+                                    Image.LANCZOS)
     background = Image.new('RGB', (width, height), (255, 255, 255, 255))
     offset = (round((width - resize_width) / 2),
               round((height - resize_height) / 2))

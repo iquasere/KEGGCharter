@@ -13,10 +13,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v2
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v1
-
       - name: Build and push
         uses: docker/build-push-action@v2
         with:
@@ -24,33 +22,24 @@ jobs:
           file: ./Dockerfile
           tags: keggcharter:latest
           outputs: type=docker,dest=/tmp/keggcharter.tar
-
       - name: Upload artifact
         uses: actions/upload-artifact@v2
         with:
           name: keggcharter
           path: /tmp/keggcharter.tar
 
-  use:
+  run-keggcharter:
     runs-on: ubuntu-latest
     needs: build
     steps:
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v1
-
       - name: Download artifact
         uses: actions/download-artifact@v2
         with:
           name: keggcharter
           path: /tmp
-
       - name: Load Docker image
         run: |
           docker load --input /tmp/keggcharter.tar
           docker image ls -a
-
-      - name: Check base entrypoint
-        run: docker run keggcharter /bin/bash -c "ls"
-
       - name: Run KEGGCharter
         run: docker run keggcharter /bin/bash -c "keggcharter -f KEGGCharter/ci/keggcharter_input.tsv -rd resources_directory -mm 00190,00680 -keggc 'Cross-reference (KEGG)' -gcol mg -tcol mt_0.01a,mt_1a,mt_100a,mt_0.01b,mt_1b,mt_100b,mt_0.01c,mt_1c,mt_100c -tc 'Taxonomic lineage (SPECIES)' -mm 00680"
