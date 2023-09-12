@@ -297,7 +297,8 @@ def write_kgmls(mmaps, out_dir, max_tries=3, org='ko'):
         done = False
         while tries < max_tries and not done:
             orthologs = [orth.id for orth in write_kgml(mmap, f'{out_dir}/{org}{mmap}.xml', organism=org).orthologs]
-            mmap_to_orthologs[mmap] = orthologs
+            genes = [gene.id for gene in write_kgml(mmap, f'{out_dir}/{org}{mmap}.xml', organism=org).genes]
+            mmap_to_orthologs[mmap] = orthologs + genes
             done = True
         i += 1
     return mmap_to_orthologs
@@ -524,10 +525,16 @@ def main():
         if pathway is not None and ec_list is not None:
             timed_message(f'[{i + 1}/{len(args.metabolic_maps)}] {pathway.title}')
             chart_map(
-                f'{args.resources_directory}/kc_kgmls/ko{args.metabolic_maps[i]}.xml', ec_list, data,
-                taxon_to_mmap_to_orthologs, mmaps2taxa, output=args.output,
-                ko_column=ko_column, taxa_column=args.taxa_column,
-                genomic_columns=args.genomic_columns, transcriptomic_columns=args.transcriptomic_columns,
+                f'{args.resources_directory}/kc_kgmls/ko{args.metabolic_maps[i]}.xml',
+                ec_list,
+                data,
+                taxon_to_mmap_to_orthologs,
+                mmaps2taxa,
+                output=args.output,
+                ko_column=ko_column,
+                taxa_column=args.taxa_column,
+                genomic_columns=args.genomic_columns,
+                transcriptomic_columns=args.transcriptomic_columns,
                 number_of_taxa=args.number_of_taxa,
                 grey_taxa=('Other taxa' if args.input_taxonomy is None else args.input_taxonomy))
         else:
