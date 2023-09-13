@@ -32,9 +32,7 @@ def get_arguments():
     parser.add_argument(
         "-mm", "--metabolic-maps", help="IDs of metabolic maps to output",
         default=','.join(keggcharter_prokaryotic_maps()))
-    parser.add_argument("-gcol", "--genomic-columns", help="Names of columns with genomic identification")
-    parser.add_argument(
-        "-tcol", "--transcriptomic-columns", help="Names of columns with transcriptomics quantification")
+    parser.add_argument("-qcol", "--quantification-columns", help="Names of columns with quantification")
     parser.add_argument(
         "-tls", "--taxa-list", help="List of taxa to represent in genomic potential charts (comma separated)")  # TODO - must be tested
     parser.add_argument(
@@ -83,14 +81,15 @@ def get_arguments():
         if not os.path.isdir(directory):
             Path(directory).mkdir(parents=True, exist_ok=True)
             print(f'Created {directory}')
-    if not hasattr(args, 'genomic_columns'):
+    if not hasattr(args, 'quantification_columns'):
         input_quantification = str2bool(
-            'No genomic columns specified! See https://github.com/iquasere/KEGGCharter#mock-imputation-of-'
-            'quantification-and-taxonomy for more details. Do you want to use mock quantification? [y/N]')
+            'No quantification columns specified! Do you want to use mock quantification? '
+            'See https://github.com/iquasere/KEGGCharter#mock-imputation-of-quantification-and-taxonomy for more '
+            'details. [y/N]')
         if input_quantification:
             args.input_quantification = True
         else:
-            exit('No genomic columns specified!')
+            exit('No quantification columns specified!')
     return args
 
 
@@ -422,21 +421,19 @@ def get_mmaps2taxa(taxon_to_mmap_to_orthologs):
 
 def chart_map(
         kgml_filename, ec_list, data, taxon_to_mmap_to_orthologs, mmaps2taxa, output=None, ko_column=None,
-        taxa_column=None, genomic_columns=None, transcriptomic_columns=None, number_of_taxa=10,
+        taxa_column=None, quantification_columns=None, number_of_taxa=10,
         grey_taxa='Other taxa'):
-    if genomic_columns:  # when not set is None
-        mmap = KGML_parser.read(open(kgml_filename))
-        kegg_pathway_map = KEGGPathwayMap(pathway=mmap, ec_list=ec_list)
-        kegg_pathway_map.genomic_potential_taxa(
-            data, genomic_columns, ko_column, taxon_to_mmap_to_orthologs, mmaps2taxa=mmaps2taxa,
-            taxa_column=taxa_column, output_basename=f'{output}/potential', number_of_taxa=number_of_taxa,
-            grey_taxa=grey_taxa)
-    if transcriptomic_columns:  # when not set is None
-        mmap = KGML_parser.read(open(kgml_filename))
-        kegg_pathway_map = KEGGPathwayMap(pathway=mmap, ec_list=ec_list)
-        kegg_pathway_map.differential_expression_sample(
-            data, transcriptomic_columns, ko_column, mmaps2taxa, taxa_column=taxa_column,
-            output_basename=f'{output}/differential', log=False)
+    mmap = KGML_parser.read(open(kgml_filename))
+    kegg_pathway_map = KEGGPathwayMap(pathway=mmap, ec_list=ec_list)
+    kegg_pathway_map.genomic_potential_taxa(
+        data, quantification_columns, ko_column, taxon_to_mmap_to_orthologs, mmaps2taxa=mmaps2taxa,
+        taxa_column=taxa_column, output_basename=f'{output}/potential', number_of_taxa=number_of_taxa,
+        grey_taxa=grey_taxa)
+    mmap = KGML_parser.read(open(kgml_filename))
+    kegg_pathway_map = KEGGPathwayMap(pathway=mmap, ec_list=ec_list)
+    kegg_pathway_map.differential_expression_sample(
+        data, quantification_columns, ko_column, mmaps2taxa, taxa_column=taxa_column,
+        output_basename=f'{output}/differential', log=False)
     plt.close()
 
 
@@ -471,37 +468,29 @@ def get_pathway_and_ec_list(rd, mmap):
 
 def read_input():
     args = get_arguments()
-    timed_message('Arguments valid.')
     if args.show_available_maps:
         sys.exit(kegg_metabolic_maps().to_string())
     data = read_input_file(args.file)
     timed_message('Data successfully read.')
-
     if args.input_quantification:
         data['Quantification (KEGGCharter)'] = [1] * len(data)
-        args.genomic_columns = 'Quantification (KEGGCharter)'
-
+        args.quantification_columns = 'Quantification (KEGGCharter)'
     if args.input_taxonomy:
         data['Taxon (KEGGCharter)'] = [args.input_taxonomy] * len(data)
         args.taxa_column = 'Taxon (KEGGCharter)'
         args.taxa_list = args.input_taxonomy
-
     args.metabolic_maps = args.metabolic_maps.split(',')
-    args.genomic_columns = args.genomic_columns.split(',')
-    if args.transcriptomic_columns:
-        args.transcriptomic_columns = args.transcriptomic_columns.split(',')
-
+    args.quantification_columns = args.quantification_columns.split(',')
+    timed_message('Arguments valid.')
     return args, data
 
 
 def main():
     args, data = read_input()
-    '''
     if not args.resume:
         data, main_column = further_information(
             data, f'{args.output}/KEGGCharter_results.tsv', kegg_column=args.kegg_column, ko_column=args.ko_column,
             ec_column=args.ec_column, step=args.step)
-    '''
     ko_column = args.ko_column if args.ko_column else 'KO (KEGGCharter)'
 
     if args.resume:
@@ -539,8 +528,7 @@ def main():
                 output=args.output,
                 ko_column=ko_column,
                 taxa_column=args.taxa_column,
-                genomic_columns=args.genomic_columns,
-                transcriptomic_columns=args.transcriptomic_columns,
+                quantification_columns=args.quantification_columns,
                 number_of_taxa=args.number_of_taxa,
                 grey_taxa=('Other taxa' if args.input_taxonomy is None else args.input_taxonomy))
         else:
