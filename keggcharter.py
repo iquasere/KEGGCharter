@@ -438,6 +438,7 @@ def chart_map(
 
 def get_pathway_and_ec_list(rd, mmap):
     download = True
+    pathway = None
     if os.path.isfile(f'{rd}/kc_kgmls/ko{mmap}.xml') and os.path.isfile(f'{rd}/kc_csvs/ko{mmap}.csv'):
         pathway = KGML_parser.read(open(f'{rd}/kc_kgmls/ko{mmap}.xml'))
         with open(f'{rd}/kc_csvs/ko{mmap}.csv') as f:

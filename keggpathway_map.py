@@ -211,9 +211,8 @@ class KEGGPathwayMap:
         """
         for i in range(len(self.orthologs)):
             set_bgcolor(self.orthologs[i], "#ffffff")  # set all boxes to white
-            # self.set_fgcolor(self.pathway.orthologs[i], "#ffffff")             # This might be helpful in the future, if an additional layer of marking is needed
-            orthologs_in_box = [ide[3:] for ide in self.orthologs[
-                i].name.split()]  # 'ko:K16157 ko:K16158 ko:K16159' -> ['K16157', 'K16158', 'K16159']
+            # self.set_fgcolor(self.pathway.orthologs[i], "#ffffff")             # This might be helpful in the future, if an additional layer of information is needed
+            orthologs_in_box = [ide[3:] for ide in self.orthologs[i].name.split()]  # 'ko:K16157 ko:K16158 ko:K16159' -> ['K16157', 'K16158', 'K16159']
             for ortholog in orthologs_in_box:
                 if ortholog not in self.ko_boxes.keys():
                     self.ko_boxes[ortholog] = [self.orthologs[i].id]
@@ -221,6 +220,7 @@ class KEGGPathwayMap:
                     self.ko_boxes[ortholog].append(self.orthologs[i].id)  # {'K16157':[0,13,432], 'K16158':[4,13,545]}
 
             # Set name as most abundant EC number, if no EC numbers are available use KO
+            # I haven't found a way to increase the font of the ECs/KOs on the map. It seems none is available at the moment
             ecs = ec_list[i].split(',')
             if len(ecs) > 0:
                 self.orthologs[i].graphics[0].name = max(set(ecs), key=ecs.count).split(':')[1]
@@ -387,14 +387,11 @@ class KEGGPathwayMap:
                     if ortholog in self.ko_boxes.keys():
                         for box in self.ko_boxes[ortholog]:
                             if box in taxon_to_mmap_to_orthologs[taxon][self.name.split('ko')[1]]:
-                                if box in box2taxon.keys():
-                                    if taxon not in box2taxon[box]:
+                                if box in box2taxon.keys():             # box already has taxonomies assigned
+                                    if taxon not in box2taxon[box]:     # this taxonomy hasn't yet been assigned to this box
                                         box2taxon[box].append(taxon)
-                                    else:
-                                        box2taxon[box] = [taxon]
-            # for every box with KOs identified from the most abundant taxa, sub-boxes are created with colours of the
-            # corresponding taxa
-            self.pathway_box_list(box2taxon, dic_colors)
+                                else:                                   # box has still no taxonomies assigned, and therefore is not present in box2taxon
+                                    box2taxon[box] = [taxon]
             # boxes with KOs identified but not from the most abundant taxa are still identified in grey
             df = data[(data[taxa_column].isin(mmaps2taxa[self.name.split('ko')[1]]) &
                        data[ko_column].isin(self.ko_boxes.keys())) & ~data[taxa_column].isin(taxa)]
@@ -403,10 +400,11 @@ class KEGGPathwayMap:
                 if ortholog in self.ko_boxes.keys():
                     dic_colors[grey_taxa] = "#7c7272"
                     for box in self.ko_boxes[ortholog]:
-                        if box not in box2taxon.keys():
-                            box2taxon[box] = [grey_taxa]
+                        if box in box2taxon.keys():                     # box already has taxonomies assigned
+                            if grey_taxa not in box2taxon[box]:         # "others" hasn't yet been assigned to this box
+                                box2taxon[box].append(grey_taxa)
                         else:
-                            box2taxon[box].append(grey_taxa)
+                            box2taxon[box] = [grey_taxa]                # box has still no taxonomies assigned, and therefore is not present in box2taxon
         else:
             # if input_taxonomy
             dic_colors = {grey_taxa: "#7c7272"}
@@ -418,6 +416,7 @@ class KEGGPathwayMap:
                             box2taxon[box].append(grey_taxa)
                         else:
                             box2taxon[box] = [grey_taxa]
+        self.pathway_box_list(box2taxon, dic_colors)  # for every box with KOs identified from the most abundant taxa, sub-boxes are created with colours of the corresponding taxa
         name = self.name.split(':')[-1]
         name_pdf = f'{output_basename}_{name}.pdf'
         self.to_pdf(name_pdf)
