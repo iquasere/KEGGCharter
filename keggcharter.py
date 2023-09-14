@@ -120,6 +120,7 @@ def download_organism(directory):
 
 
 def read_input_file(file):
+    timed_message('Reading input data.')
     if file.endswith('.xlsx'):
         return pd.read_excel(file)
     return pd.read_csv(file, sep='\t', low_memory=False)
@@ -471,7 +472,6 @@ def read_input():
     if args.show_available_maps:
         sys.exit(kegg_metabolic_maps().to_string())
     data = read_input_file(args.file)
-    timed_message('Data successfully read.')
     if args.input_quantification:
         data['Quantification (KEGGCharter)'] = [1] * len(data)
         args.quantification_columns = 'Quantification (KEGGCharter)'
@@ -501,7 +501,7 @@ def main():
         else:
             taxon_to_mmap_to_orthologs = None
     else:
-        data = prepare_data_for_charting(data, ko_column=ko_column, mt_cols=args.transcriptomic_columns)
+        data = prepare_data_for_charting(data, ko_column=ko_column, mt_cols=args.quantification_columns)
         data.to_csv(f'{args.output}/data_for_charting.tsv', sep='\t', index=False)
         if not args.input_taxonomy:
             taxon_to_mmap_to_orthologs = download_resources(
