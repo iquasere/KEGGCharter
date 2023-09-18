@@ -153,15 +153,15 @@ def add_blank_space(image_pil, width, height, image_mode='RGB'):
     return background.convert(image_mode)
 
 
-def expand_by_list_column(df, column='Pathway'):
+def expand_by_list_column(df, column):
     if len(df) == 0:
         return pd.DataFrame()
-    lens = [len(item) for item in df[column]]
-    dictionary = dict()
-    for col in df.columns:
-        dictionary[col] = np.repeat(df[col].values, lens)
-    dictionary[column] = np.concatenate(df[column].values)
-    return pd.DataFrame(dictionary)
+    na_df = df[df[column].isnull()]
+    non_na_df = df[df[column].notnull()].reset_index(drop=True)
+    lens = [len(item) for item in non_na_df[column]]
+    non_na_dict = {col: np.repeat(non_na_df[col].values, lens) for col in non_na_df.columns}
+    non_na_dict[column] = np.concatenate(non_na_df[column].values)
+    return pd.concat([na_df, pd.DataFrame(non_na_dict)])
 
 
 def taxa_colors(hex_values=None, ncolor=1):

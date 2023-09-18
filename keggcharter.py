@@ -128,7 +128,7 @@ def read_input_file(file):
 
 def further_information(data, output, kegg_column=None, ko_column=None, ec_column=None, step=150):
     """
-    Adds KEGG, KO and EC information to the input data
+    Adds KOs and EC numbers to the input data
     """
     data = get_cross_references(data, kegg_column=kegg_column, ko_column=ko_column, ec_column=ec_column, step=step)
     main_column = kegg_column if kegg_column is not None else ko_column if ko_column is not None else ec_column
@@ -139,71 +139,89 @@ def further_information(data, output, kegg_column=None, ko_column=None, ec_colum
 
 
 # Conversion functions
-def id2id(input_ids, column, output_column, output_ids_type, step=150, desc=''):
+def id2id(input_ids, in_col, out_col, in_type, out_type, step=150):
     """
-    Converts KEGG_ID genes to Ortholog KO ID from KEGG
+    Converts KEGG IDs, KOs or EC numbers to KOs and EC numbers through the KEGG API
     :param input_ids: (list) - IDs to convert
-    :param column: (str) - name of column with IDs to convert (used for merging DFs)
-    :param output_column: (str) - name of column to return
-    :param output_ids_type: (str) - database to convert IDs to
+    :param in_col: (str) - name of column with IDs to convert (used for merging DFs)
+    :param out_col: (str) - name of column to return
+    :param in_type: (str) - type of input IDs
+    :param out_type: (str) - database to convert IDs to
     :param step: (int) - will convert "step" KEGG IDs at a time
-    :param desc: (str) - string to output to tqdm progressbar
     :return: (list) - (list,list) - KEGG ID genes converted and ko IDs
     """
-    result = pd.DataFrame(columns=[column, output_column])
+    result = pd.DataFrame(columns=[in_col, out_col])
+    if len(input_ids) == 0:
+        return result
+    type_to_desc = {'kegg': 'KEGG IDs', 'ko': 'KOs', 'ec': 'EC numbers', 'enzyme': 'EC numbers'}
+    desc = f'Converting {len(input_ids)} {type_to_desc[in_type]} to {type_to_desc[out_type]} through the KEGG API'
     for i in tqdm(range(0, len(input_ids), step), desc=desc, ascii=' >='):
         j = min(i + step, len(input_ids))
         try:
             result = pd.concat([result, pd.read_csv(
-                kegg_link(output_ids_type, input_ids[i:j]), sep='\t', names=[column, output_column])])
-        except Exception as e:
-            print(f'IDs conversion broke at index: {i}; Error: {e}')
-    if output_ids_type == 'ko':
-        result[output_column] = result[output_column].apply(lambda x: x.strip('ko:'))
-        result[column] = result[column].apply(lambda x: x.strip('ec:'))
-    elif output_ids_type == 'enzyme':
-        result[column] = result[column].apply(lambda x: x.strip('ko:'))
-        result[output_column] = result[output_column].apply(lambda x: x.strip('ec:'))
+                kegg_link(out_type, input_ids[i:j]), sep='\t', names=[in_col, out_col])])
+        except:
+            try:        # try a second time. The API is robust, and it's unusual to fail a third time
+                result = pd.concat([result, pd.read_csv(
+                    kegg_link(out_type, input_ids[i:j]), sep='\t', names=[in_col, out_col])])
+            except Exception as e:
+                print(f'IDs conversion broke at index {i}; Error: {e}')
+    if out_type == 'ko':
+        result[out_col] = result[out_col].apply(lambda x: x.split('ko:')[-1])
+    elif out_type == 'enzyme':
+        result[out_col] = result[out_col].apply(lambda x: x.split('ec:')[-1])
+    result = result.groupby(in_col)[out_col].agg(lambda x: ','.join(map(str, x))).reset_index()
     return result
 
 
-def ids_interconversion(data, column, ids_type='kegg', step=150):
-    ids = data[column].dropna().unique().tolist()
-    base_desc = 'Converting %i %s to %s through the KEGG API'
+def ids_xref(data, in_col, out_col, ids_type='kegg', step=150):
+    data[f'{in_col}_split'] = data[in_col].apply(lambda x: x.split(';') if type(x) != float else x)    # split by semicolon
+    data = expand_by_list_column(data, column=f'{in_col}_split')
+    ids = ';'.join(data[f'{in_col}_split'].dropna().unique()).split(';')       # KEGGCharter only accepts ";" as separator
     if ids_type == 'kegg':
-        # sometimes Kegg IDs come as mfc:BRM9_0145;mfi:DSM1535_1468; (e.g. from UniProt IDs mapping).
-        # Should be no problem to select the first one since both IDs likely will represent the same functions
-        trimmed_ids = [ide.split(';')[0] for ide in ids]
-        relational = pd.DataFrame([ids, trimmed_ids]).transpose()
-        new_ids = id2id(
-            trimmed_ids, column, 'KO (KEGGCharter)', 'ko', desc=base_desc % (len(ids), 'KEGG IDs', 'KOs'), step=step)
-        new_ids = pd.merge(new_ids, relational, left_on=column, right_on=1)  # mcj:MCON_3003;   mcj:MCON_3003
-        del new_ids[column]  # mcj:MCON_3003    K07486  mcj:MCON_3003;  mcj:MCON_3003
-        del new_ids[1]
-        new_ids.columns = ['KO (KEGGCharter)', column]
+        new_ids = id2id(ids, f'{in_col}_split', out_col, in_type='kegg', out_type='ko', step=step)
     elif ids_type == 'ko':
-        new_ids = id2id(
-            ids, column, 'EC number (KEGGCharter)', 'enzyme', desc=base_desc % (len(ids), 'KOs', 'EC numbers'),
-            step=step)
+        new_ids = id2id(ids, f'{in_col}_split', out_col, in_type='ko', out_type='enzyme', step=step)
     elif ids_type == 'ec':
-        new_ids = id2id(
-            ids, column, 'KO (KEGGCharter)', 'ko', desc=base_desc % (len(ids), 'EC numbers', 'KOs'), step=step)
+        new_ids = id2id(ids, f'{in_col}_split', out_col, in_type='ec', out_type='ko', step=step)
     else:
         raise ValueError('ids_type must be one of: kegg, ko, ec')
-    return pd.merge(data, new_ids, on=column, how='left')
+    data = pd.merge(data, new_ids, on=f'{in_col}_split', how='outer')
+    data = data.drop(columns=[f'{in_col}_split'])
+    other_cols = [col for col in data.columns if col not in [in_col, out_col]]
+    cols = data.columns
+    result = pd.concat([
+        data[other_cols].drop_duplicates(),
+        data.groupby(in_col)[out_col].agg(lambda x: ';'.join(map(str, x))).reset_index()],
+        axis=1)[cols].replace('nan', np.nan)
+    return result
 
 
 def get_cross_references(data, kegg_column=None, ko_column=None, ec_column=None, step=150):
     # KEGG ID to KO -> if KO column is not set, KEGGCharter will get them through the KEGG API
+    ko_cols = []
+    ec_cols = []
     if kegg_column:
-        data = ids_interconversion(data, column=kegg_column, ids_type='kegg', step=step)
-        data = ids_interconversion(data, column='KO (KEGGCharter)', ids_type='ko', step=step)
+        data = ids_xref(data, in_col=kegg_column, out_col='KO (kegg-column)', ids_type='kegg', step=step)
+        data = ids_xref(data, in_col='KO (kegg-column)', out_col='EC (kegg-column)', ids_type='ko', step=step)
+        ko_cols.append('KO (kegg-column)'); ec_cols.append('EC (kegg-column)')
     if ko_column:
-        data = ids_interconversion(data, column=ko_column, ids_type='ko', step=step)
-        data = ids_interconversion(data, column='EC number (KEGGCharter)', ids_type='ec', step=step)
+        data = ids_xref(data, in_col=ko_column, out_col='EC (ko-column)', ids_type='ko', step=step)
+        data = ids_xref(data, in_col='EC (ko-column)', out_col='KO (ko-column)', ids_type='ec', step=step)
+        ko_cols.append(ko_column); ko_cols.append('KO (ko-column)'); ec_cols.append('EC (ko-column)')
     if ec_column:
-        data = ids_interconversion(data, column=ec_column, ids_type='ec', step=step)
-        data = ids_interconversion(data, column='KO (KEGGCharter)', ids_type='ko', step=step)
+        data = ids_xref(data, in_col=ec_column, out_col='KO (ec-column)', ids_type='ec', step=step)
+        data = ids_xref(data, in_col='KO (ec-column)', out_col='EC (ec-column)', ids_type='ko', step=step)
+        ko_cols.append('KO (ec-column)'); ec_cols.append(ec_column); ec_cols.append('EC (ec-column)')
+    # join all unique KOs in a column
+    data['KO (KEGGCharter)'] = data[ko_cols].apply(
+        lambda x: ','.join(set([elem for elem in x if elem is not np.nan])), axis=1)
+    data['KO (KEGGCharter)'] = data['KO (KEGGCharter)'].apply(lambda x: ','.join(sorted(set(x.split(',')))))
+    # join all unique ECs in a column
+    data['EC number (KEGGCharter)'] = data[ec_cols].apply(
+        lambda x: ','.join(set([elem for elem in x if elem is not np.nan])), axis=1)
+    data['EC number (KEGGCharter)'] = data['EC number (KEGGCharter)'].apply(
+        lambda x: ','.join(sorted(set(x.split(',')))))
     if not (kegg_column or ko_column or ec_column):
         exit('Need to specify a column with either KEGG IDs, KOs or EC numbers!')
     return data
@@ -227,6 +245,7 @@ def prepare_data_for_charting(data, mt_cols=None, ko_column='KO (KEGGCharter)', 
     """
     This function expands the dataframe by the KO column, so that each row has only one KO.
     """
+    # TODO - this function is outdated, refresh it
     nokos = data[data[ko_column].isnull()]
     wkos = data[data[ko_column].notnull()].reset_index(drop=True)
     if ko_from_uniprot:
@@ -266,7 +285,7 @@ def write_kgml(mmap, output, organism='ko', max_tries=3):
     Still, it works, and for now that's enough.
     """
     tries = 0
-    while max_tries > 0:
+    while tries < max_tries:
         try:
             data = kegg_get(f"{organism}{mmap}", "kgml").read()
             with open(output, 'w') as f:
@@ -274,7 +293,8 @@ def write_kgml(mmap, output, organism='ko', max_tries=3):
                     f.write(data)
                     return KGML_parser.read(data)
                 return None
-        except:
+        except Exception as e:
+            print(f'Error: {e}.{" Trying again..." if tries < max_tries else ""}')
             tries += 1
     return None
 
@@ -430,7 +450,7 @@ def chart_map(
         data, quantification_columns, ko_column, taxon_to_mmap_to_orthologs, mmaps2taxa=mmaps2taxa,
         taxa_column=taxa_column, output_basename=f'{output}/potential', number_of_taxa=number_of_taxa,
         grey_taxa=grey_taxa)
-    mmap = KGML_parser.read(open(kgml_filename))
+    mmap = KGML_parser.read(open(kgml_filename))        # need to re-read the file because it's modified by the function
     kegg_pathway_map = KEGGPathwayMap(pathway=mmap, ec_list=ec_list)
     kegg_pathway_map.differential_expression_sample(
         data, quantification_columns, ko_column, mmaps2taxa, taxa_column=taxa_column,
@@ -489,8 +509,12 @@ def main():
     args, data = read_input()
     if not args.resume:
         data, main_column = further_information(
-            data, f'{args.output}/KEGGCharter_results.tsv', kegg_column=args.kegg_column, ko_column=args.ko_column,
-            ec_column=args.ec_column, step=args.step)
+            data,
+            f'{args.output}/KEGGCharter_results.tsv',
+            kegg_column=args.kegg_column,
+            ko_column=args.ko_column,
+            ec_column=args.ec_column,
+            step=args.step)
     ko_column = args.ko_column if args.ko_column else 'KO (KEGGCharter)'
 
     if args.resume:
@@ -512,8 +536,7 @@ def main():
         else:
             taxon_to_mmap_to_orthologs = None
 
-    # '00190': ['Keratinibaculum paraultunense']
-    mmaps2taxa = get_mmaps2taxa(taxon_to_mmap_to_orthologs) if not args.input_taxonomy else None
+    mmaps2taxa = get_mmaps2taxa(taxon_to_mmap_to_orthologs) if not args.input_taxonomy else None        # '00190': ['Keratinibaculum paraultunense']
     timed_message(f'Creating KEGG Pathway representations for {len(args.metabolic_maps)} metabolic pathways.')
     for i in range(len(args.metabolic_maps)):
         pathway, ec_list = get_pathway_and_ec_list(args.resources_directory, args.metabolic_maps[i])
