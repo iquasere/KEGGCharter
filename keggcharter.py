@@ -166,6 +166,10 @@ def id2id(input_ids, in_col, out_col, in_type, out_type, step=150):
                     kegg_link(out_type, input_ids[i:j]), sep='\t', names=[in_col, out_col])])
             except Exception as e:
                 print(f'IDs conversion broke at index {i}; Error: {e}')
+    if in_type == 'ko':
+        result[in_col] = result[in_col].apply(lambda x: x.split('ko:')[-1])
+    elif in_type == 'ec':
+        result[in_col] = result[in_col].apply(lambda x: x.split('ec:')[-1])
     if out_type == 'ko':
         result[out_col] = result[out_col].apply(lambda x: x.split('ko:')[-1])
     elif out_type == 'enzyme':
@@ -174,26 +178,25 @@ def id2id(input_ids, in_col, out_col, in_type, out_type, step=150):
     return result
 
 
-def ids_xref(data, in_col, out_col, ids_type='kegg', step=150):
-    data[f'{in_col}_split'] = data[in_col].apply(lambda x: x.split(';') if type(x) != float else x)    # split by semicolon
+def ids_xref(data, in_col, out_col, in_type='kegg', step=150):
+    data[f'{in_col}_split'] = data[in_col].apply(lambda x: x.split(',') if type(x) != float else x)    # split by comma
     data = expand_by_list_column(data, column=f'{in_col}_split')
-    ids = ';'.join(data[f'{in_col}_split'].dropna().unique()).split(';')       # KEGGCharter only accepts ";" as separator
-    if ids_type == 'kegg':
+    ids = ','.join(data[f'{in_col}_split'].dropna().unique()).split(',')       # KEGGCharter only accepts "," as separator because KEGG uses the same separator
+    if in_type == 'kegg':
         new_ids = id2id(ids, f'{in_col}_split', out_col, in_type='kegg', out_type='ko', step=step)
-    elif ids_type == 'ko':
+    elif in_type == 'ko':
         new_ids = id2id(ids, f'{in_col}_split', out_col, in_type='ko', out_type='enzyme', step=step)
-    elif ids_type == 'ec':
+    elif in_type == 'ec':
         new_ids = id2id(ids, f'{in_col}_split', out_col, in_type='ec', out_type='ko', step=step)
     else:
         raise ValueError('ids_type must be one of: kegg, ko, ec')
     data = pd.merge(data, new_ids, on=f'{in_col}_split', how='outer')
     data = data.drop(columns=[f'{in_col}_split'])
     other_cols = [col for col in data.columns if col not in [in_col, out_col]]
-    cols = data.columns
     result = pd.concat([
         data[other_cols].drop_duplicates(),
-        data.groupby(in_col)[out_col].agg(lambda x: ';'.join(map(str, x))).reset_index()],
-        axis=1)[cols].replace('nan', np.nan)
+        data.groupby(in_col)[out_col].agg(lambda x: ','.join(map(str, set([val for val in x if type(val) != float])))
+                                          ).reset_index()], axis=1)[data.columns].replace('', np.nan)
     return result
 
 
@@ -202,16 +205,16 @@ def get_cross_references(data, kegg_column=None, ko_column=None, ec_column=None,
     ko_cols = []
     ec_cols = []
     if kegg_column:
-        data = ids_xref(data, in_col=kegg_column, out_col='KO (kegg-column)', ids_type='kegg', step=step)
-        data = ids_xref(data, in_col='KO (kegg-column)', out_col='EC (kegg-column)', ids_type='ko', step=step)
+        data = ids_xref(data, in_col=kegg_column, out_col='KO (kegg-column)', in_type='kegg', step=step)
+        data = ids_xref(data, in_col='KO (kegg-column)', out_col='EC (kegg-column)', in_type='ko', step=step)
         ko_cols.append('KO (kegg-column)'); ec_cols.append('EC (kegg-column)')
     if ko_column:
-        data = ids_xref(data, in_col=ko_column, out_col='EC (ko-column)', ids_type='ko', step=step)
-        data = ids_xref(data, in_col='EC (ko-column)', out_col='KO (ko-column)', ids_type='ec', step=step)
+        data = ids_xref(data, in_col=ko_column, out_col='EC (ko-column)', in_type='ko', step=step)
+        data = ids_xref(data, in_col='EC (ko-column)', out_col='KO (ko-column)', in_type='ec', step=step)
         ko_cols.append(ko_column); ko_cols.append('KO (ko-column)'); ec_cols.append('EC (ko-column)')
     if ec_column:
-        data = ids_xref(data, in_col=ec_column, out_col='KO (ec-column)', ids_type='ec', step=step)
-        data = ids_xref(data, in_col='KO (ec-column)', out_col='EC (ec-column)', ids_type='ko', step=step)
+        data = ids_xref(data, in_col=ec_column, out_col='KO (ec-column)', in_type='ec', step=step)
+        data = ids_xref(data, in_col='KO (ec-column)', out_col='EC (ec-column)', in_type='ko', step=step)
         ko_cols.append('KO (ec-column)'); ec_cols.append(ec_column); ec_cols.append('EC (ec-column)')
     # join all unique KOs in a column
     data['KO (KEGGCharter)'] = data[ko_cols].apply(
