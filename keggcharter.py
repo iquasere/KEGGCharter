@@ -134,7 +134,7 @@ def further_information(data, output, kegg_column=None, ko_column=None, ec_colum
     main_column = kegg_column if kegg_column is not None else ko_column if ko_column is not None else ec_column
     data = condense_data(data, main_column)
     data.to_csv(output, sep='\t', index=False)
-    timed_message(f'Results saved to {output}')
+    timed_message(f'New information saved to {output}')
     return data, main_column
 
 
@@ -160,12 +160,13 @@ def id2id(input_ids, in_col, out_col, in_type, out_type, step=150):
         try:
             result = pd.concat([result, pd.read_csv(
                 kegg_link(out_type, input_ids[i:j]), sep='\t', names=[in_col, out_col])])
-        except:
+        except Exception as e:
+            print(f'IDs conversion broke at index {i}; Error: {e}; Trying again...')
             try:        # try a second time. The API is robust, and it's unusual to fail a third time
                 result = pd.concat([result, pd.read_csv(
                     kegg_link(out_type, input_ids[i:j]), sep='\t', names=[in_col, out_col])])
             except Exception as e:
-                print(f'IDs conversion broke at index {i}; Error: {e}')
+                print(f'IDs conversion broke at index {i} again; Error: {e}')
     if in_type == 'ko':
         result[in_col] = result[in_col].apply(lambda x: x.split('ko:')[-1])
     elif in_type == 'ec':
@@ -406,8 +407,8 @@ def download_resources(
         mmap_to_orthologs = write_kgmls(metabolic_maps, f'{resources_directory}/kc_kgmls', org='ko')
         taxon_to_mmap_to_orthologs = {taxon: mmap_to_orthologs for taxon in taxa}
     else:
-        kegg_prefixes = [(taxon, taxon2prefix(taxon, taxa_df)) for taxon in tqdm(
-            taxa, desc='Obtaining KEGG prefixes from inputted taxa', ascii=' >=')]
+        timed_message('Obtaining KEGG prefixes from inputted taxa')
+        kegg_prefixes = [(taxon, taxon2prefix(taxon, taxa_df)) for taxon in taxa]
         kegg_prefixes = [pair for pair in kegg_prefixes if pair[1] is not None]
         for taxon, kegg_prefix in tqdm(
                 kegg_prefixes, desc=f'Getting information for {len(kegg_prefixes) - 1} taxa', ascii=' >='):
@@ -518,7 +519,6 @@ def main():
             ko_column=args.ko_column,
             ec_column=args.ec_column,
             step=args.step)
-    ko_column = args.ko_column if args.ko_column else 'KO (KEGGCharter)'
 
     if args.resume:
         data = pd.read_csv(f'{args.output}/data_for_charting.tsv', sep='\t', low_memory=False)
@@ -528,7 +528,7 @@ def main():
         else:
             taxon_to_mmap_to_orthologs = None
     else:
-        data = prepare_data_for_charting(data, ko_column=ko_column, mt_cols=args.quantification_columns)
+        data = prepare_data_for_charting(data, ko_column='KO (KEGGCharter)', mt_cols=args.quantification_columns)
         data.to_csv(f'{args.output}/data_for_charting.tsv', sep='\t', index=False)
         if not args.input_taxonomy:
             taxon_to_mmap_to_orthologs = download_resources(
@@ -552,7 +552,7 @@ def main():
                 taxon_to_mmap_to_orthologs,
                 mmaps2taxa,
                 output=args.output,
-                ko_column=ko_column,
+                ko_column='KO (KEGGCharter)',
                 taxa_column=args.taxa_column,
                 quantification_columns=args.quantification_columns,
                 number_of_taxa=args.number_of_taxa,
