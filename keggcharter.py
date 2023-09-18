@@ -172,9 +172,9 @@ def id2id(input_ids, in_col, out_col, in_type, out_type, step=150):
     elif in_type == 'ec':
         result[in_col] = result[in_col].apply(lambda x: x.split('ec:')[-1])
     if out_type == 'ko':
-        result[out_col] = result[out_col].apply(lambda x: x.split('ko:')[-1])
+        result[out_col] = result[out_col].apply(lambda x: x.split('ko:')[-1] if type(x) != float else x)
     elif out_type == 'enzyme':
-        result[out_col] = result[out_col].apply(lambda x: x.split('ec:')[-1])
+        result[out_col] = result[out_col].apply(lambda x: x.split('ec:')[-1] if type(x) != float else x)
     result = result.groupby(in_col)[out_col].agg(lambda x: ','.join(map(str, x))).reset_index()
     return result
 
@@ -193,11 +193,11 @@ def ids_xref(data, in_col, out_col, in_type='kegg', step=150):
         raise ValueError('ids_type must be one of: kegg, ko, ec')
     data = pd.merge(data, new_ids, on=f'{in_col}_split', how='outer')
     data = data.drop(columns=[f'{in_col}_split'])
-    other_cols = [col for col in data.columns if col not in [in_col, out_col]]
-    result = pd.concat([
-        data[other_cols].drop_duplicates(),
-        data.groupby(in_col)[out_col].agg(lambda x: ','.join(map(str, set([val for val in x if type(val) != float])))
-                                          ).reset_index()], axis=1)[data.columns].replace('', np.nan)
+    other_cols = [col for col in data.columns if col != out_col]
+    left_df = data[other_cols].drop_duplicates()
+    right_df = data.groupby(in_col)[out_col].agg(
+        lambda x: ','.join(map(str, set([val for val in x if type(val) != float])))).reset_index()
+    result = pd.merge(left_df, right_df, on=in_col, how='left').replace('', np.nan)
     return result
 
 
