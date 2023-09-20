@@ -13,7 +13,6 @@ from Bio.KEGG.REST import kegg_link, kegg_list, kegg_get
 from Bio.KEGG.KGML import KGML_parser
 from matplotlib import pyplot as plt
 from tqdm import tqdm
-from glob import glob
 import json
 import re
 

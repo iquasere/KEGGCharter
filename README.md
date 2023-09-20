@@ -60,12 +60,12 @@ KEGGCharter produces a table from the inputed data with two new columns - KO (KE
 KEGGCharter then represents this information in KEGG metabolic maps. If information is available as result of (meta)genomics analysis, KEGGCharter will localize the boxes whose functions are present in the organisms' genomes, mapping their genomic potential. If (meta)transcriptomics data is available, KEGGCharter will consider the sample as a whole, measuring gene expression and performing a multi-sample comparison for each function in the metabolic maps.
 * maps with genomic information are identified with the prefix "potential_" from genomic potential (Fig. 1).
 
-![ScreenShot](potential_Methane_metabolism.png)
+![ScreenShot](resources/potential_Methane_metabolism.png)
 Fig. 1 - KEGG metabolic map of methane metabolism, with identified taxa for each function from a simulated dataset.
 
 * maps with transcriptomic information are identified with the prefix "differential_" from differential expression (Fig. 2).
 
-![ScreenShot](differential_Methane_metabolism.png)
+![ScreenShot](resources/differential_Methane_metabolism.png)
 Fig. 2 - KEGG metabolic map of methane metabolism, with differential analysis of quantified expression for each function from a simulated dataset.
 
 ## Arguments for KEGGCharter
