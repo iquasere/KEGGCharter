@@ -308,8 +308,6 @@ def write_kgmls(mmaps, out_dir, max_tries=3, org='ko'):
         mmap_to_orthologs[name] = [orth.id for orth in parsed.orthologs] + [gene.id for gene in parsed.genes]
     mmaps = [mmap for mmap in mmaps if mmap not in maps_done]
     i = 1
-    if len(mmaps) == 0:
-        return mmap_to_orthologs
     for mmap in tqdm(mmaps, desc=f'Getting [{len(mmaps)}] KGMLs for taxon [{org}]', ascii=' >='):
         tries = 0
         done = False
@@ -366,7 +364,7 @@ def get_taxon_maps(kegg_prefix, max_tries=3):
     while tries < max_tries:
         try:
             df = pd.read_csv(StringIO(kegg_list("pathway", kegg_prefix).read()), sep='\t', header=None)
-            return df[[0]].apply(lambda x: x.split(kegg_prefix)[1]).tolist()
+            return df[0].apply(lambda x: x.split(kegg_prefix)[1]).tolist()
         except:
             tries += 1
     return []
@@ -377,11 +375,12 @@ def parse_organism(file):
 
 
 def download_resources(
-        data, resources_directory, taxa_column, metabolic_maps, map_all=False, map_non_kegg_genomes=True):
+        data, resources_dir, out_dir, taxa_column, metabolic_maps, map_all=False, map_non_kegg_genomes=True):
     """
     Download all resources for a given dataframe
     :param data: pandas.DataFrame - dataframe with taxa names in taxa_column
-    :param resources_directory: str - directory where to save the resources
+    :param resources_dir: str - directory where to save the resources
+    :param out_dir: str - directory where to save the output
     :param taxa_column: str - column name in dataframe with taxa names
     :param metabolic_maps: list - metabolic maps to download
     :param map_all: bool - if True, attribute all maps and all functions to all taxa, only limit by the identifications
@@ -389,14 +388,14 @@ def download_resources(
     :return: taxon_to_mmap_to_orthologs - dic with taxon name as key and dic with metabolic maps as values
     """
     timed_message('Downloading resources')
-    download_organism(resources_directory)
+    download_organism(resources_dir)
     taxa = ['ko'] + data[taxa_column].unique().tolist()
     if np.nan in taxa:
         taxa.remove(np.nan)
-    taxa_df = parse_organism(f'{resources_directory}/organism')
+    taxa_df = parse_organism(f'{resources_dir}/organism')
     taxon_to_mmap_to_orthologs = {}  # {'Keratinibaculum paraultunense' : {'00190': ['1', '2']}}
     if map_all:     # attribute all maps and all functions to all taxa, only limit by the data
-        mmap_to_orthologs = write_kgmls(metabolic_maps, f'{resources_directory}/kc_kgmls', org='ko')
+        mmap_to_orthologs = write_kgmls(metabolic_maps, f'{resources_dir}/kc_kgmls', org='ko')
         taxon_to_mmap_to_orthologs = {taxon: mmap_to_orthologs for taxon in taxa}
     else:
         timed_message('Obtaining KEGG prefixes from inputted taxa')
@@ -408,14 +407,14 @@ def download_resources(
                 taxon_mmaps = get_taxon_maps(kegg_prefix)
                 taxon_mmaps = [mmap for mmap in taxon_mmaps if mmap in metabolic_maps]  # select only inputted maps
                 taxon_to_mmap_to_orthologs[taxon] = write_kgmls(
-                    taxon_mmaps, f'{resources_directory}/kc_kgmls', org=kegg_prefix)
+                    taxon_mmaps, f'{resources_dir}/kc_kgmls', org=kegg_prefix)
             else:
                 if map_non_kegg_genomes:
                     taxon_to_mmap_to_orthologs[taxon] = write_kgmls(
-                        metabolic_maps, f'{resources_directory}/kc_kgmls', org='ko')
+                        metabolic_maps, f'{resources_dir}/kc_kgmls', org='ko')
                 else:
                     taxon_to_mmap_to_orthologs[taxon] = {}
-    with open(f'{resources_directory}/taxon_to_mmap_to_orthologs.json', 'w') as f:
+    with open(f'{out_dir}/taxon_to_mmap_to_orthologs.json', 'w') as f:
         json.dump(taxon_to_mmap_to_orthologs, f)
     timed_message('Generated taxon_to_mmap_to_orthologs.json')
     return taxon_to_mmap_to_orthologs
@@ -449,7 +448,7 @@ def chart_map(
     mmap = KGML_parser.read(open(kgml_filename))        # need to re-read the file because it's modified by the function
     kegg_pathway_map = KEGGPathwayMap(pathway=mmap, ec_list=ec_list)
     kegg_pathway_map.differential_expression_sample(
-        data, quantification_columns, ko_column, mmaps2taxa, taxa_column=taxa_column,
+        data, quantification_columns, ko_column, mmaps2taxa=mmaps2taxa, taxa_column=taxa_column,
         output_basename=f'{output}/differential', log=False)
     plt.close()
 
@@ -523,8 +522,8 @@ def main():
         data.to_csv(f'{args.output}/data_for_charting.tsv', sep='\t', index=False)
         if not args.input_taxonomy:
             taxon_to_mmap_to_orthologs = download_resources(
-                data, args.resources_directory, args.taxa_column, args.metabolic_maps, map_all=args.map_all,
-                map_non_kegg_genomes=args.include_missing_genomes)
+                data, args.resources_directory, args.output, args.taxa_column, args.metabolic_maps,
+                map_all=args.map_all, map_non_kegg_genomes=args.include_missing_genomes)
             h = open(f"{args.output}/taxon_to_mmap_to_orthologs.json", "w")
             json.dump(taxon_to_mmap_to_orthologs, h)
         else:
