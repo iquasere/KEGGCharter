@@ -193,11 +193,11 @@ def ids_xref(data, in_col, out_col, in_type='kegg', step=150):
         raise ValueError('ids_type must be one of: kegg, ko, ec')
     data = pd.merge(data, new_ids, on=f'{in_col}_split', how='outer')
     data = data.drop(columns=[f'{in_col}_split'])
-    other_cols = [col for col in data.columns if col != out_col]
-    left_df = data[other_cols].drop_duplicates()
-    right_df = data.groupby(in_col)[out_col].agg(
-        lambda x: ','.join(map(str, set([val for val in x if type(val) != float])))).reset_index()
-    result = pd.merge(left_df, right_df, on=in_col, how='left').replace('', np.nan)
+    other_cols = [col for col in data.columns if col not in [in_col, out_col]]
+    result = pd.concat([
+        data[other_cols].drop_duplicates(),
+        data.groupby(in_col)[out_col].agg(lambda x: ','.join(map(str, set([val for val in x if type(val) != float])))
+                                          ).reset_index()], axis=1)[data.columns].replace('', np.nan)
     return result
 
 
@@ -249,21 +249,14 @@ def prepare_data_for_charting(data, mt_cols=None, ko_column='KO (KEGGCharter)', 
     """
     This function expands the dataframe by the KO column, so that each row has only one KO.
     """
-    # TODO - this function is outdated, refresh it
-    nokos = data[data[ko_column].isnull()]
-    wkos = data[data[ko_column].notnull()].reset_index(drop=True)
-    if ko_from_uniprot:
-        # If coming from UniProt ID mapping, KOs will be in the form "KXXXXX;"
-        wkos[ko_column] = wkos[ko_column].apply(lambda x: x.rstrip(';'))
-    # Expand KOs column if some elements are in the form KO1,KO2,...
-    wkos[ko_column] = wkos[ko_column].apply(lambda x: x.split(','))
+    data = data[data[ko_column].notnull()].reset_index(drop=True)
+    data[ko_column] = data[ko_column].apply(lambda x: x.split(','))     # for lines with multiple KOs
     # Divide the quantification by the number of KOs in the column
     if mt_cols is not None:
         for col in mt_cols:
-            wkos[col] = wkos[col] / wkos[ko_column].apply(lambda x: len(x))
-    wkos = expand_by_list_column(wkos, column=ko_column)
-    data = pd.concat([wkos, nokos])
-    timed_message('Data expanded by KO column.')
+            data[col] = data[col] / data[ko_column].apply(lambda x: len(x))
+    data = expand_by_list_column(data, column=ko_column)
+    timed_message('Data prepared for charting.')
     return data
 
 
@@ -511,14 +504,6 @@ def read_input():
 
 def main():
     args, data = read_input()
-    if not args.resume:
-        data, main_column = further_information(
-            data,
-            f'{args.output}/KEGGCharter_results.tsv',
-            kegg_column=args.kegg_column,
-            ko_column=args.ko_column,
-            ec_column=args.ec_column,
-            step=args.step)
 
     if args.resume:
         data = pd.read_csv(f'{args.output}/data_for_charting.tsv', sep='\t', low_memory=False)
@@ -528,6 +513,13 @@ def main():
         else:
             taxon_to_mmap_to_orthologs = None
     else:
+        data, main_column = further_information(
+            data,
+            f'{args.output}/KEGGCharter_results.tsv',
+            kegg_column=args.kegg_column,
+            ko_column=args.ko_column,
+            ec_column=args.ec_column,
+            step=args.step)
         data = prepare_data_for_charting(data, ko_column='KO (KEGGCharter)', mt_cols=args.quantification_columns)
         data.to_csv(f'{args.output}/data_for_charting.tsv', sep='\t', index=False)
         if not args.input_taxonomy:

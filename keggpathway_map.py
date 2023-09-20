@@ -161,6 +161,8 @@ def expand_by_list_column(df, column):
     lens = [len(item) for item in non_na_df[column]]
     non_na_dict = {col: np.repeat(non_na_df[col].values, lens) for col in non_na_df.columns}
     non_na_dict[column] = np.concatenate(non_na_df[column].values)
+    if len(na_df) == 0:
+        return pd.DataFrame(non_na_dict)
     return pd.concat([na_df, pd.DataFrame(non_na_dict)])
 
 
