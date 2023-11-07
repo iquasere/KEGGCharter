@@ -5,7 +5,6 @@ A tool for representing genomic potential and transcriptomic expression into KEG
 * [Features](https://github.com/iquasere/KEGGCharter#features)
 * [Installation](https://github.com/iquasere/KEGGCharter#installation)
 * [Running KEGGCharter](https://github.com/iquasere/KEGGCharter#running-keggcharter)
-* [Testing KEGGCharter](https://github.com/iquasere/KEGGCharter#testing-keggcharter)
 * [Outputs](https://github.com/iquasere/KEGGCharter#outputs)
 * [Arguments for KEGGCharter](https://github.com/iquasere/KEGGCharter#arguments-for-keggcharter)
 * [Referencing KEGGCharter](https://github.com/iquasere/KEGGCharter#referencing-keggcharter)
@@ -27,32 +26,24 @@ conda install -c conda-forge -c bioconda keggcharter
 
 ## Running KEGGCharter
 
-To run KEGGCharter, an input file must be supplied - see ```Testing KEGGCharter``` section - and columns 
-with genomic and/or transcriptomic information, as well as one column with either KEGG IDs, KOs or EC numbers, must be 
-present in the file and specified through the command line.
-```
-keggcharter.py -f input_file.tsv -o output_folder -mgc mg_column1,mg_column2 -mtc mt_column1,mt_column2 ...
-```
+To run KEGGCharter, an input file must be supplied. This file only needs to contain one column with either KEGG IDs, KOs or EC numbers. Beyond that:
+* to obtain distinct taxonomic identifications in the maps, a column with taxonomic identification must be specified with the `-tcol` parameter. If no such column exists, KEGGCharter must be run with the `-it` parameter.
+* to obtain maps with differential expression, at least one column with genomic and/or transcriptomic quantification must be specified with the `-qcol`parameter. If no such column exists, KEGGCharter must be run with the `-iq` parameter.
 
-## Testing KEGGCharter
-
-An example input file is available [here](https://github.com/iquasere/KEGGCharter/blob/master/MOSCA_Entry_Report.xlsx). 
-This is one output of [MOSCA](https://github.com/iquasere/MOSCA), which can be directly inputted to KEGGCharter to obtain
-metabolic representations by running:
+An example input file is available [here](https://github.com/iquasere/KEGGCharter/blob/master/cicd/keggcharter_input.tsv). 
+It contains all fields referenced above, and should be used as guidance for building inputs for KEGGCharter.
+To obtain metabolic representations for "Methane Metabolism" and "Fatty Acid Degradation" with KEGGCharter, for this input file, KEGGCharter can be run with the following command:
 ```
-keggcharter -f MOSCA_Entry_Report.xlsx -gcol mg -tcol mt_0.01a_normalized,mt_1a_normalized,mt_100a_normalized,mt_0.01b_normalized,mt_1b_normalized,mt_100b_normalized,mt_0.01c_normalized,mt_1c_normalized,mt_100c_normalized -keggc "Cross-reference (KEGG)" -o test_keggcharter -tc "Taxonomic lineage (GENUS)"
+keggcharter -f keggcharter_input.tsv -o test_keggcharter -qcol mt_0.01a,mt_1a,mt_100a,mt_0.01b,mt_1b,mt_100b,mt_0.01c,mt_1c,mt_100c -keggc "KEGG ID" -tc "Species" -mm 00680,00071
 ```
-Just make sure ```MOSCA_Entry_Report.xlsx``` is in the present folder, or indicate the path to it. This command will create
-representations for all 252 default maps of KEGGCharter. If you want to represent for less or more, run with the ```--metabolic-maps``` 
-parameter to indicate to KEGGCharter what maps to run (comma separated).
 
 ### First time KEGGCharter runs it will take a long time
 
 KEGGCharter needs KGMLs and EC numbers to boxes relations, which it will automatically retrieve for every map inputted. 
 This might take some time, but you only need to run it once. 
 
-Default directory for storing these files is the folder containing the ```keggcharter.py``` script, but it can be customized
-with the ```--resources-directory``` parameter.
+Default directory for storing these files is the folder containing the `keggcharter` script, but it can be customized
+with the `-rd` parameter.
 
 ## Outputs
 

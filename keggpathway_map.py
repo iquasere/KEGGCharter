@@ -282,27 +282,20 @@ class KEGGPathwayMap:
             if self.orthologs[boxidx].graphics[0].width is not None:
                 create_tile_box(self.orthologs[boxidx])
 
-    def pathway_boxes_differential(self, dataframe, log=True, colormap="coolwarm"):
+    def pathway_boxes_differential(self, dataframe, colormap="coolwarm"):
         """
         Represents expression values present in a dataframe in the
         pathway map
         :param dataframe: pandas DataFrame with each column representing a sample
         and index corresponding to int list index of the ortholog element in the
         pathway
-        :param log: bol providing the option for a log transformation of data
         :param colormap: str representing a costum matplotlib colormap to be used
         """
-        if log:
-            norm = cm.colors.LogNorm(vmin=dataframe.min().min(), vmax=dataframe.max().max())
-        else:
-            norm = cm.colors.Normalize(vmin=dataframe.min().min(), vmax=dataframe.max().max())
-
+        norm = cm.colors.Normalize(vmin=dataframe.min().min(), vmax=dataframe.max().max())
         colormap = cm.get_cmap(colormap)
-        dataframe = dataframe.apply(conv_value_rgb, args=(colormap, norm))  # TODO - Doesn't work if using log
+        dataframe = dataframe.apply(conv_value_rgb, args=(colormap, norm))
         dataframe = dataframe.apply(conv_rgb_hex)
-
         dataframe = dataframe[dataframe.columns.tolist()]
-
         nrboxes = len(dataframe.columns.tolist())  # number of samples
 
         for box in dataframe.index.tolist():
@@ -423,8 +416,6 @@ class KEGGPathwayMap:
         name_pdf = f'{output_basename}_{name}.pdf'
         self.to_pdf(name_pdf)
 
-        # TODO - legend should be ajusted for the maps - otherwise, makes no sense to have one legend for each map -
-        #  they all become the same, except for "Other taxa"
         self.create_potential_legend(dic_colors.values(), dic_colors.keys(), name_pdf.replace('.pdf', '_legend.png'))
 
         self.add_legend(
@@ -441,18 +432,16 @@ class KEGGPathwayMap:
 
     def differential_expression_sample(
             self, data, samples, ko_column, mmaps2taxa, taxa_column='Taxonomic lineage (GENUS)',
-            output_basename=None, log=True):
+            output_basename=None):
         """
         Represents in small heatmaps the expression levels of each sample on the
-        dataset present in the given pathway map. The values can be transford to
-        a log10 scale
+        dataset present in the given pathway map.
         :param data: pandas.DataFrame with data already processed by KEGGPathway
         :param samples: list - column names of the dataset corresponding to expression values
         :param ko_column: str - column with KOs to represent
         :param mmaps2taxa: dict - of taxa to color
         :param taxa_column: str - column with taxonomic classification
         :param output_basename: string - basename of outputs
-        :param log: bol - convert the expression values to logarithmic scale?
         """
         if mmaps2taxa is not None:
             data = data[data[taxa_column].isin(mmaps2taxa[self.name.split('ko')[1]])]
@@ -465,7 +454,7 @@ class KEGGPathwayMap:
             return 1
         df = df.groupby('Boxes')[samples].sum()
 
-        self.pathway_boxes_differential(df, log)
+        self.pathway_boxes_differential(df)
 
         name = self.name.split(':')[-1]
         name_pdf = f'{output_basename}_{name}.pdf'

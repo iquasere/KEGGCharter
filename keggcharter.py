@@ -18,7 +18,7 @@ import re
 
 from keggpathway_map import KEGGPathwayMap, expand_by_list_column
 
-__version__ = "0.7.0"
+__version__ = "0.7.1"
 
 
 def get_arguments():
@@ -40,9 +40,8 @@ def get_arguments():
     parser.add_argument("-keggc", "--kegg-column", help="Column with KEGG IDs.")
     parser.add_argument("-koc", "--ko-column", help="Column with KOs.")
     parser.add_argument("-ecc", "--ec-column", help="Column with EC numbers.")
-    # TODO - test this argument without UniProt shenanigans
     parser.add_argument(
-        "-tc", "--taxa-column", default='Taxonomic lineage (GENUS)',
+        "-tc", "--taxa-column", default=None,
         help="Column with the taxa designations to represent with KEGGCharter."
              " NOTE - for valid taxonomies, check: https://www.genome.jp/kegg/catalog/org_list.html")
     parser.add_argument(
@@ -74,7 +73,8 @@ def get_arguments():
         help="Outputs KEGG maps IDs and descriptions to the console (so you may pick the ones you want!)")
 
     args = parser.parse_args()
-
+    if not os.path.isfile(args.file):
+        exit("Input file doesn't exist! Exiting...")
     args.output = args.output.rstrip('/')
     for directory in [args.output] + [f'{args.resources_directory}/{folder}' for folder in ['', 'kc_kgmls', 'kc_csvs']]:
         if not os.path.isdir(directory):
@@ -449,7 +449,7 @@ def chart_map(
     kegg_pathway_map = KEGGPathwayMap(pathway=mmap, ec_list=ec_list)
     kegg_pathway_map.differential_expression_sample(
         data, quantification_columns, ko_column, mmaps2taxa=mmaps2taxa, taxa_column=taxa_column,
-        output_basename=f'{output}/differential', log=False)
+        output_basename=f'{output}/differential')
     plt.close()
 
 
@@ -496,6 +496,11 @@ def read_input():
         args.taxa_list = args.input_taxonomy
     args.metabolic_maps = args.metabolic_maps.split(',')
     args.quantification_columns = args.quantification_columns.split(',')
+    # check if all columns supposed to be in the input data are in the input data
+    for col in [args.taxa_column, args.kegg_column, args.ko_column, args.ec_column] + args.quantification_columns:
+        if col is not None:
+            if col not in data.columns:
+                exit(f'"{col}" column not in input file! Exiting...')
     timed_message('Arguments valid.')
     return args, data
 
