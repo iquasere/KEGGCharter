@@ -1,6 +1,8 @@
 #!/usr/bin/env python
-
+import argparse
 from argparse import ArgumentParser, ArgumentTypeError
+from multiprocessing import Manager, cpu_count
+from typing import Dict, List, Union
 import numpy as np
 import os
 import pandas as pd
@@ -15,10 +17,11 @@ from matplotlib import pyplot as plt
 from tqdm import tqdm
 import json
 import re
-
+import requests
+from lxml import html
 from keggpathway_map import KEGGPathwayMap, expand_by_list_column
 
-__version__ = "0.7.1"
+__version__ = "1.0.0"
 
 
 def get_arguments():
@@ -40,6 +43,7 @@ def get_arguments():
     parser.add_argument("-keggc", "--kegg-column", help="Column with KEGG IDs.")
     parser.add_argument("-koc", "--ko-column", help="Column with KOs.")
     parser.add_argument("-ecc", "--ec-column", help="Column with EC numbers.")
+    parser.add_argument("-cogc", "--cog-column", help="Column with COG IDs.")
     parser.add_argument(
         "-tc", "--taxa-column", default=None,
         help="Column with the taxa designations to represent with KEGGCharter."
@@ -50,6 +54,9 @@ def get_arguments():
     parser.add_argument(
         "-it", "--input-taxonomy", default=None,
         help="If no taxonomy column exists and there is only one taxon in question.")
+    parser.add_argument(
+        "-t", "--threads", default=cpu_count(), type=int,
+        help="Number of threads to run KEGGCharter with [max available]")
     parser.add_argument(
         "--step", default=40, type=int, help="Number of IDs to submit per request through the KEGG API [40]")
     parser.add_argument(
@@ -103,6 +110,11 @@ def str2bool(v):
         raise ArgumentTypeError('Boolean value expected.')
 
 
+def error_exit(message):
+    print(message)
+    sys.exit(1)
+
+
 def timed_message(message):
     print(strftime("%Y-%m-%d %H:%M:%S", gmtime()) + ': ' + message)
 
@@ -118,18 +130,58 @@ def download_organism(directory):
         run_command(f'wget http://rest.kegg.jp/list/organism -P {directory}')
 
 
-def read_input_file(file):
+def read_input():
+    args = get_arguments()
+    if args.show_available_maps:
+        sys.exit(kegg_metabolic_maps().to_string())
+    data = read_input_file(args)
+    if args.input_quantification:
+        data['Quantification (KEGGCharter)'] = [1] * len(data)
+        args.quantification_columns = 'Quantification (KEGGCharter)'
+    if args.input_taxonomy:
+        data['Taxon (KEGGCharter)'] = [args.input_taxonomy] * len(data)
+        args.taxa_column = 'Taxon (KEGGCharter)'
+        args.taxa_list = args.input_taxonomy
+    args.metabolic_maps = args.metabolic_maps.split(',')
+    args.quantification_columns = args.quantification_columns.split(',')
+    timed_message('Arguments valid.')
+    return args, data
+
+
+def read_input_file(args: argparse.Namespace) -> pd.DataFrame:
     timed_message('Reading input data.')
-    if file.endswith('.xlsx'):
-        return pd.read_excel(file)
-    return pd.read_csv(file, sep='\t', low_memory=False)
+    result = pd.DataFrame()
+    if not os.path.isfile(args.file):
+        error_exit('Input file does not exist.')
+    try:
+        if args.file.endswith('.xlsx'):
+            result = pd.read_excel(args.file)
+        else:
+            result = pd.read_csv(args.file, sep='\t', low_memory=False)
+    except Exception as e:          # Something happened reading the file. Could it be CSV?
+        error_exit(f'Failure to read file! Input file can only be Excel (ending in .xlsx) or TSV.\n{e}')
+    for col in [args.taxa_column, args.kegg_column, args.ko_column, args.ec_column, args.cog_column
+                ] + args.quantification_columns:
+        if col is not None:
+            if col not in result.columns:   # check if all columns supposed to be in the input data are in the input data
+                error_exit(f'"{col}" column not in input file! Exiting...')
+            for bad_char in [';', ' ']:     # There can be no bad char in columns with functional IDs. Only commas!
+                if result[col].str.contains(bad_char).sum() > 0:
+                    error_exit(f'BAD CHARACTER: "{col}" column contains at least one "{bad_char}". '
+                               f'Only commas are allowed as separator.')
+    return result
 
 
-def further_information(data, output, kegg_column=None, ko_column=None, ec_column=None, step=150):
+def further_information(
+        data: pd.DataFrame, output: str, kegg_column: str = None, ko_column: str = None, ec_column: str = None,
+        cog_column: str = None, resources_dir: str = None, threads: int = 15, step: int = 150
+        ) -> Union[pd.DataFrame, str]:
     """
     Adds KOs and EC numbers to the input data
     """
-    data = get_cross_references(data, kegg_column=kegg_column, ko_column=ko_column, ec_column=ec_column, step=step)
+    data = get_cross_references(
+        data, kegg_column=kegg_column, ko_column=ko_column, ec_column=ec_column, cog_column=cog_column, step=step,
+        resources_dir=resources_dir, threads=threads)
     main_column = kegg_column if kegg_column is not None else ko_column if ko_column is not None else ec_column
     data = condense_data(data, main_column)
     data.to_csv(output, sep='\t', index=False)
@@ -137,8 +189,80 @@ def further_information(data, output, kegg_column=None, ko_column=None, ec_colum
     return data, main_column
 
 
+def split_list(a, n):
+    k, m = divmod(len(a), n)
+    return (a[i * k + min(i, m):(i + 1) * k + min(i + 1, m)] for i in range(n))
+
+
+def get_ko_html(ko: str, verbose: bool = False) -> Union[str, None]:
+    tries, done = 0, False
+    while not done and tries < 3:       # max tries = 3
+        try:
+            return requests.get(f'https://www.genome.jp/dbget-bin/www_bget?ko:{ko}').text
+        except Exception as e:
+            tries += 1
+            if verbose:
+                print(f'Failed {tries} time(s) getting HTML for KO:{ko}. {e}')
+    return None
+
+
+def get_kos_htmls(kos: List[str]) -> Dict[str, str]:
+    return {ko: get_ko_html(ko) for ko in tqdm(kos, desc=f'Getting HTMLs for {len(kos)} KOs', ascii=' >=')}
+
+
+def get_kos_htmls_multiprocess(kos: List[str], threads: int = 15) -> Dict[str, html.HtmlElement]:
+    kos_groups = split_list(kos, threads)
+    kos_strs = {}
+    with Manager() as m:
+        with m.Pool() as p:
+            result = p.map(get_kos_htmls, [kos_group for kos_group in kos_groups])
+    for res in result:
+        kos_strs = {**kos_strs, **res}
+    return {ko: html.fromstring(ko_str) for ko, ko_str in kos_strs.items()}
+
+
+def make_cog2ko(resources_dir: str, threads: int = 15) -> pd.DataFrame:
+    kos = pd.read_csv(StringIO(kegg_list('ko').read()), sep='\t', header=None)[0].tolist()
+    ko_htmls = get_kos_htmls_multiprocess(kos, threads=threads)
+    result = {}
+    for ko in kos:
+        result[ko] = []
+        elems = ko_htmls[ko].body.getchildren()[0].getchildren()[0].getchildren()[0].getchildren()[0].getchildren()[
+            2].getchildren()[0].getchildren()[0].getchildren()[0].getchildren()
+        for elem in elems:
+            if elem.getchildren()[0].getchildren()[0].text == 'Other DBs':
+                for table in elem.getchildren()[1].getchildren():
+                    if table.getchildren()[0].getchildren()[0].getchildren()[0].text.startswith('COG:'):
+                        for cog_elem in table.getchildren()[0].getchildren()[1].getchildren():
+                            result[ko].append(cog_elem.text)
+    for ko, cogs in result.items():
+        result[ko] = ','.join(cogs)
+    result = pd.DataFrame.from_dict(result, orient='index').reset_index()
+    result.columns = ['KO', 'COG']
+    # KO2COG to COG2KO
+    result['COG'] = result['COG'].str.split(',')
+    result = result.explode('COG')
+    result = result.pivot_table(index='COG', values='KO', aggfunc=lambda x: ','.join(x)).reset_index()
+    result.to_csv(f'{resources_dir}/cog2ko.tsv', sep='\t', index=False)
+    return result
+
+
+def cog2ko(input_ids: list, in_col: str, out_col: str, resources_dir: str, threads: int = 15) -> pd.DataFrame:
+    result = pd.DataFrame(input_ids, columns=[in_col])
+    if len(input_ids) == 0:
+        return result
+    if os.path.isfile(f'{resources_dir}/cog2ko.tsv'):
+        cog2ko_df = pd.read_csv(f'{resources_dir}/cog2ko.tsv', sep='\t')
+    else:
+        cog2ko_df = make_cog2ko(resources_dir, threads=threads)
+    result = pd.merge(result, cog2ko_df, left_on=in_col, right_on='COG', how='left')
+    del result['COG']
+    result.rename(columns={'KO': out_col}, inplace=True)
+    return result
+
+
 # Conversion functions
-def id2id(input_ids, in_col, out_col, in_type, out_type, step=150):
+def id2id(input_ids: list, in_col: str, out_col: str, in_type: str, out_type: str, step: int = 150) -> pd.DataFrame:
     """
     Converts KEGG IDs, KOs or EC numbers to KOs and EC numbers through the KEGG API
     :param input_ids: (list) - IDs to convert
@@ -178,19 +302,25 @@ def id2id(input_ids, in_col, out_col, in_type, out_type, step=150):
     return result
 
 
-def ids_xref(data, in_col, out_col, in_type='kegg', step=150):
+def ids_xref(
+        data: pd.DataFrame, in_col: str, out_col: str, in_type: str, resources_dir: str = None, step: int = 150,
+        threads: int = 15) -> pd.DataFrame:
     data[f'{in_col}_split'] = data[in_col].apply(lambda x: x.split(',') if type(x) != float else x)    # split by comma
     data = expand_by_list_column(data, column=f'{in_col}_split')
-    ids = ','.join(data[f'{in_col}_split'].dropna().unique()).split(',')       # KEGGCharter only accepts "," as separator because KEGG uses the same separator
+    ids = ','.join(data[f'{in_col}_split'].dropna().unique()).split(',')    # KEGGCharter only accepts "," as separator
     if in_type == 'kegg':
         new_ids = id2id(ids, f'{in_col}_split', out_col, in_type='kegg', out_type='ko', step=step)
     elif in_type == 'ko':
         new_ids = id2id(ids, f'{in_col}_split', out_col, in_type='ko', out_type='enzyme', step=step)
     elif in_type == 'ec':
         new_ids = id2id(ids, f'{in_col}_split', out_col, in_type='ec', out_type='ko', step=step)
+    elif in_type == 'cog':
+        if resources_dir is None:       # this is only for me, if I forget
+            error_exit('Must specify resources_dir when mapping COGs!')
+        new_ids = cog2ko(ids, f'{in_col}_split', out_col, resources_dir=resources_dir, threads=threads)
     else:
-        raise ValueError('ids_type must be one of: kegg, ko, ec')
-    data = pd.merge(data, new_ids, on=f'{in_col}_split', how='outer')
+        raise ValueError('ids_type must be one of: kegg, ko, ec, cog')
+    data = pd.merge(data, new_ids, on=f'{in_col}_split', how='left')
     data = data.drop(columns=[f'{in_col}_split'])
     other_cols = [col for col in data.columns if col not in [in_col, out_col]]
     result = pd.concat([
@@ -200,10 +330,12 @@ def ids_xref(data, in_col, out_col, in_type='kegg', step=150):
     return result
 
 
-def get_cross_references(data, kegg_column=None, ko_column=None, ec_column=None, step=150):
+def get_cross_references(
+        data: pd.DataFrame, kegg_column: str = None, ko_column: str = None, ec_column: str = None,
+        cog_column: str = None, resources_dir: str = None, threads: int = 15, step: int = 150) -> pd.DataFrame:
     # KEGG ID to KO -> if KO column is not set, KEGGCharter will get them through the KEGG API
-    ko_cols = []
-    ec_cols = []
+    ko_cols = []    # cols with KOs
+    ec_cols = []    # cols with EC numbers
     if kegg_column:
         data = ids_xref(data, in_col=kegg_column, out_col='KO (kegg-column)', in_type='kegg', step=step)
         data = ids_xref(data, in_col='KO (kegg-column)', out_col='EC (kegg-column)', in_type='ko', step=step)
@@ -216,9 +348,13 @@ def get_cross_references(data, kegg_column=None, ko_column=None, ec_column=None,
         data = ids_xref(data, in_col=ec_column, out_col='KO (ec-column)', in_type='ec', step=step)
         data = ids_xref(data, in_col='KO (ec-column)', out_col='EC (ec-column)', in_type='ko', step=step)
         ko_cols.append('KO (ec-column)'); ec_cols.append(ec_column); ec_cols.append('EC (ec-column)')
+    if cog_column:
+        data = ids_xref(
+            data, in_col=cog_column, out_col='KO (cog-column)', in_type='cog', resources_dir=resources_dir,
+            threads=threads)
     # join all unique KOs in a column
     data['KO (KEGGCharter)'] = data[ko_cols].apply(
-        lambda x: ','.join(set([elem for elem in x if elem is not np.nan])), axis=1)
+        lambda x: ','.join([elem for elem in x if elem is not np.nan]), axis=1)
     data['KO (KEGGCharter)'] = data['KO (KEGGCharter)'].apply(lambda x: ','.join(sorted(set(x.split(',')))))
     # join all unique ECs in a column
     data['EC number (KEGGCharter)'] = data[ec_cols].apply(
@@ -226,7 +362,7 @@ def get_cross_references(data, kegg_column=None, ko_column=None, ec_column=None,
     data['EC number (KEGGCharter)'] = data['EC number (KEGGCharter)'].apply(
         lambda x: ','.join(sorted(set(x.split(',')))))
     if not (kegg_column or ko_column or ec_column):
-        exit('Need to specify a column with either KEGG IDs, KOs or EC numbers!')
+        error_exit('Need to specify a column with either KEGG IDs, KOs or EC numbers!')
     return data
 
 
@@ -244,16 +380,18 @@ def condense_data(data, main_column):
     return pd.merge(data, pd.concat([onlykos, wecs]), on=main_column, how='left').drop_duplicates()
 
 
-def prepare_data_for_charting(data, mt_cols=None, ko_column='KO (KEGGCharter)', ko_from_uniprot=False):
+def prepare_data_for_charting(
+        data: pd.DataFrame, mt_cols: str = None, ko_column: str = 'KO (KEGGCharter)',
+        distribute_quantification: bool = False):
     """
     This function expands the dataframe by the KO column, so that each row has only one KO.
     """
     data = data[data[ko_column].notnull()].reset_index(drop=True)
     data[ko_column] = data[ko_column].apply(lambda x: x.split(','))     # for lines with multiple KOs
-    # Divide the quantification by the number of KOs in the column
-    if mt_cols is not None:
-        for col in mt_cols:
-            data[col] = data[col] / data[ko_column].apply(lambda x: len(x))
+    if distribute_quantification:           # Divide the quantification by the number of KOs in the column
+        if mt_cols is not None:
+            for col in mt_cols:
+                data[col] = data[col] / data[ko_column].apply(lambda x: len(x))
     data = expand_by_list_column(data, column=ko_column)
     timed_message('Data prepared for charting.')
     return data
@@ -303,12 +441,12 @@ def write_kgmls(mmaps, out_dir, max_tries=3, org='ko'):
     maps_done = [
         filename.split(org)[-1].rstrip('.xml') for filename in glob_re(fr'{org}\d+\.xml', os.listdir(out_dir))]
     mmap_to_orthologs = {}
-    for name in maps_done:          # maps already done will have their orthologs and genes put in
-        parsed = KGML_parser.read(open(f'{out_dir}/{org}{name}.xml'))
-        mmap_to_orthologs[name] = [orth.id for orth in parsed.orthologs] + [gene.id for gene in parsed.genes]
-    mmaps = [mmap for mmap in mmaps if mmap not in maps_done]
     i = 1
-    for mmap in tqdm(mmaps, desc=f'Getting [{len(mmaps)}] KGMLs for taxon [{org}]', ascii=' >='):
+    for mmap in tqdm(mmaps, desc=f'Checking on [{len(mmaps)}] KGMLs for taxon [{org}]', ascii=' >='):
+        if mmap in maps_done:          # maps already done will have their orthologs and genes put in
+            parsed = KGML_parser.read(open(f'{out_dir}/{org}{mmap}.xml'))
+            mmap_to_orthologs[mmap] = [orth.id for orth in parsed.orthologs] + [gene.id for gene in parsed.genes]
+            continue
         tries = 0
         done = False
         while tries < max_tries and not done:
@@ -482,29 +620,6 @@ def get_pathway_and_ec_list(rd, mmap):
     return pathway, ec_list
 
 
-def read_input():
-    args = get_arguments()
-    if args.show_available_maps:
-        sys.exit(kegg_metabolic_maps().to_string())
-    data = read_input_file(args.file)
-    if args.input_quantification:
-        data['Quantification (KEGGCharter)'] = [1] * len(data)
-        args.quantification_columns = 'Quantification (KEGGCharter)'
-    if args.input_taxonomy:
-        data['Taxon (KEGGCharter)'] = [args.input_taxonomy] * len(data)
-        args.taxa_column = 'Taxon (KEGGCharter)'
-        args.taxa_list = args.input_taxonomy
-    args.metabolic_maps = args.metabolic_maps.split(',')
-    args.quantification_columns = args.quantification_columns.split(',')
-    # check if all columns supposed to be in the input data are in the input data
-    for col in [args.taxa_column, args.kegg_column, args.ko_column, args.ec_column] + args.quantification_columns:
-        if col is not None:
-            if col not in data.columns:
-                exit(f'"{col}" column not in input file! Exiting...')
-    timed_message('Arguments valid.')
-    return args, data
-
-
 def main():
     args, data = read_input()
 
@@ -522,6 +637,9 @@ def main():
             kegg_column=args.kegg_column,
             ko_column=args.ko_column,
             ec_column=args.ec_column,
+            cog_column=args.column,
+            resources_dir=args.resources_directory,
+            threads=args.threads,
             step=args.step)
         data = prepare_data_for_charting(data, ko_column='KO (KEGGCharter)', mt_cols=args.quantification_columns)
         data.to_csv(f'{args.output}/data_for_charting.tsv', sep='\t', index=False)
