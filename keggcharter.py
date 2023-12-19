@@ -28,6 +28,7 @@ def get_arguments():
     parser = ArgumentParser(
         description="""KEGGCharter - A tool for representing genomic potential and transcriptomic expression into 
         KEGG pathways""", epilog="Input file must be specified.")
+    parser.add_argument("-f", "--file", help="TSV or EXCEL table with information to chart")
     parser.add_argument("-o", "--output", help="Output directory", default='KEGGCharter_results')
     parser.add_argument(
         "-rd", "--resources-directory", default=sys.path[0], help="Directory for storing KGML and CSV files.")
@@ -71,17 +72,14 @@ def get_arguments():
         help="If data inputed has already been analyzed by KEGGCharter.")
     parser.add_argument('-v', '--version', action='version', version='KEGGCharter ' + __version__)
 
-    required_named = parser.add_argument_group('required named arguments')
-    required_named.add_argument("-f", "--file", required=True, help="TSV or EXCEL table with information to chart")
-
     special_functions = parser.add_argument_group('Special functions')
     special_functions.add_argument(
         "--show-available-maps", action="store_true", default=False,
         help="Outputs KEGG maps IDs and descriptions to the console (so you may pick the ones you want!)")
 
     args = parser.parse_args()
-    if not os.path.isfile(args.file):
-        exit("Input file doesn't exist! Exiting...")
+    if args.show_available_maps:
+        sys.exit(kegg_metabolic_maps().to_string(index=False))
     args.output = args.output.rstrip('/')
     for directory in [args.output] + [f'{args.resources_directory}/{folder}' for folder in ['', 'kc_kgmls', 'kc_csvs']]:
         if not os.path.isdir(directory):
@@ -132,18 +130,16 @@ def download_organism(directory):
 
 def read_input():
     args = get_arguments()
-    if args.show_available_maps:
-        sys.exit(kegg_metabolic_maps().to_string())
+    args.metabolic_maps = args.metabolic_maps.split(',') if args.metabolic_maps else None
+    args.quantification_columns = args.quantification_columns.split(',') if args.quantification_columns else None
     data = read_input_file(args)
     if args.input_quantification:
         data['Quantification (KEGGCharter)'] = [1] * len(data)
-        args.quantification_columns = 'Quantification (KEGGCharter)'
+        args.quantification_columns = ['Quantification (KEGGCharter)']
     if args.input_taxonomy:
         data['Taxon (KEGGCharter)'] = [args.input_taxonomy] * len(data)
-        args.taxa_column = 'Taxon (KEGGCharter)'
+        args.taxa_column = ['Taxon (KEGGCharter)']
         args.taxa_list = args.input_taxonomy
-    args.metabolic_maps = args.metabolic_maps.split(',')
-    args.quantification_columns = args.quantification_columns.split(',')
     timed_message('Arguments valid.')
     return args, data
 
@@ -152,7 +148,7 @@ def read_input_file(args: argparse.Namespace) -> pd.DataFrame:
     timed_message('Reading input data.')
     result = pd.DataFrame()
     if not os.path.isfile(args.file):
-        error_exit('Input file does not exist.')
+        error_exit('Input file does not exist. Exiting...')
     try:
         if args.file.endswith('.xlsx'):
             result = pd.read_excel(args.file)
@@ -162,7 +158,7 @@ def read_input_file(args: argparse.Namespace) -> pd.DataFrame:
         error_exit(f'Failure to read file! Input file can only be Excel (ending in .xlsx) or TSV.\n{e}')
     for col in [args.taxa_column, args.kegg_column, args.ko_column, args.ec_column, args.cog_column
                 ] + args.quantification_columns:
-        if col is not None:
+        if col:
             if col not in result.columns:   # check if all columns supposed to be in the input data are in the input data
                 error_exit(f'"{col}" column not in input file! Exiting...')
             for bad_char in [';', ' ']:     # There can be no bad char in columns with functional IDs. Only commas!
@@ -203,7 +199,8 @@ def get_ko_html(ko: str, verbose: bool = False) -> Union[str, None]:
             if '403 Forbidden' not in res:
                 sleep(3 * tries)
                 return res
-            print(f'Got [403 Forbidden] for KO:{ko}. Tries remaining: {max_tries - tries}.')
+            if verbose:
+                print(f'Got [403 Forbidden] for KO:{ko}. Tries remaining: {max_tries - tries}.')
         except Exception as e:
             if verbose:
                 print(f'Failed getting HTML for KO:{ko}. Tries remaining: {max_tries - tries}.\n{e}')
@@ -224,14 +221,31 @@ def get_kos_htmls_multiprocess(kos: List[str], threads: int = 15) -> Dict[str, h
             result = p.map(get_kos_htmls, [kos_group for kos_group in kos_groups])
     for res in result:
         kos_strs = {**kos_strs, **res}
-    return {ko: html.fromstring(ko_str) for ko, ko_str in kos_strs.items()}
+    return {ko: html.fromstring(ko_str) for ko, ko_str in kos_strs.items() if ko_str is not None}
+
+
+def fix_cogs(cog):
+    if cog == '':
+        return cog
+    cog = cog.replace(':', '')
+    if len(cog) == 7:
+        return cog
+    if len(cog) > 7:        # cases were COG00028 and COG00043 for KOs K24393 and K25932,K25933, respectively
+        return cog.replace('COG0', 'COG')
+    if len(cog) < 7:        # only case was OG3395 for K23247
+        return 'C' + cog
 
 
 def make_cog2ko(resources_dir: str, threads: int = 15) -> pd.DataFrame:
     kos = pd.read_csv(StringIO(kegg_list('ko').read()), sep='\t', header=None)[0].tolist()
     ko_htmls = get_kos_htmls_multiprocess(kos, threads=threads)
+    while len(ko_htmls) < len(kos):     # this should only be required one time, but who knows. Last time, 3 % failed (921 of 26430)
+        sleep(600)
+        new_kos = [ko for ko in kos if ko not in ko_htmls.keys()]
+        new_ko_htmls = get_kos_htmls_multiprocess(new_kos, threads=threads)
+        ko_htmls = {**ko_htmls, **new_ko_htmls}
     result = {}
-    for ko in tqdm(kos):
+    for ko in tqdm(ko_htmls.keys(), ascii=' >=', desc='Extracting COGs from KOs HTMLs'):    # not tqdm(kos) because some might have not been found, this is safer
         result[ko] = []
         elems = ko_htmls[ko].body.getchildren()[0].getchildren()[0].getchildren()[0].getchildren()[
             0].getchildren()[2].getchildren()[0].getchildren()[0].getchildren()[0].getchildren()
@@ -249,7 +263,9 @@ def make_cog2ko(resources_dir: str, threads: int = 15) -> pd.DataFrame:
     result['COG'] = result['COG'].str.split(',')
     result = result.explode('COG')
     result = result.pivot_table(index='COG', values='KO', aggfunc=lambda x: ','.join(x)).reset_index()
-    result.to_csv(f'{resources_dir}/cog2ko.tsv', sep='\t', index=False)
+    # There are some problems with COGs in KEGG. This fixes the ones I found.
+    result['COG'] = result['COG'].apply(fix_cogs)
+    result.to_csv(f'{resources_dir}/cog2ko_kegg.tsv', sep='\t', index=False)
     return result
 
 
