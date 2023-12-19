@@ -32,6 +32,7 @@ requirements:
     - openpyxl
     - poppler
     - mscorefonts
+    - lxml
 
 test:
   commands:

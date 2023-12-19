@@ -10,7 +10,7 @@ from pathlib import Path
 from subprocess import run
 import sys
 from io import StringIO
-from time import time, gmtime, strftime
+from time import time, gmtime, strftime, sleep
 from Bio.KEGG.REST import kegg_link, kegg_list, kegg_get
 from Bio.KEGG.KGML import KGML_parser
 from matplotlib import pyplot as plt
@@ -175,7 +175,7 @@ def read_input_file(args: argparse.Namespace) -> pd.DataFrame:
 def further_information(
         data: pd.DataFrame, output: str, kegg_column: str = None, ko_column: str = None, ec_column: str = None,
         cog_column: str = None, resources_dir: str = None, threads: int = 15, step: int = 150
-        ) -> Union[pd.DataFrame, str]:
+        ) -> (pd.DataFrame, str):
     """
     Adds KOs and EC numbers to the input data
     """
@@ -195,14 +195,20 @@ def split_list(a, n):
 
 
 def get_ko_html(ko: str, verbose: bool = False) -> Union[str, None]:
-    tries, done = 0, False
-    while not done and tries < 3:       # max tries = 3
+    tries, res = 0, None
+    max_tries = 3
+    while tries < max_tries:
         try:
-            return requests.get(f'https://www.genome.jp/dbget-bin/www_bget?ko:{ko}').text
+            res = requests.get(f'https://www.genome.jp/dbget-bin/www_bget?ko:{ko}').text
+            if '403 Forbidden' not in res:
+                sleep(3 * tries)
+                return res
+            print(f'Got [403 Forbidden] for KO:{ko}. Tries remaining: {max_tries - tries}.')
         except Exception as e:
-            tries += 1
             if verbose:
-                print(f'Failed {tries} time(s) getting HTML for KO:{ko}. {e}')
+                print(f'Failed getting HTML for KO:{ko}. Tries remaining: {max_tries - tries}.\n{e}')
+        tries += 1
+        sleep(3 * tries)
     return None
 
 
@@ -225,10 +231,10 @@ def make_cog2ko(resources_dir: str, threads: int = 15) -> pd.DataFrame:
     kos = pd.read_csv(StringIO(kegg_list('ko').read()), sep='\t', header=None)[0].tolist()
     ko_htmls = get_kos_htmls_multiprocess(kos, threads=threads)
     result = {}
-    for ko in kos:
+    for ko in tqdm(kos):
         result[ko] = []
-        elems = ko_htmls[ko].body.getchildren()[0].getchildren()[0].getchildren()[0].getchildren()[0].getchildren()[
-            2].getchildren()[0].getchildren()[0].getchildren()[0].getchildren()
+        elems = ko_htmls[ko].body.getchildren()[0].getchildren()[0].getchildren()[0].getchildren()[
+            0].getchildren()[2].getchildren()[0].getchildren()[0].getchildren()[0].getchildren()
         for elem in elems:
             if elem.getchildren()[0].getchildren()[0].text == 'Other DBs':
                 for table in elem.getchildren()[1].getchildren():
