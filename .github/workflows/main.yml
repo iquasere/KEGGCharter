@@ -40,7 +40,7 @@ jobs:
         run: |
           docker load --input /tmp/keggcharter.tar
           docker image ls -a
-      - name: Run KEGGCharter
+      - name: Show available maps
         run: docker run keggcharter /bin/bash -c "keggcharter --show-available-maps"
 
   run-keggcharter:
@@ -72,7 +72,7 @@ jobs:
         run: |
           docker load --input /tmp/keggcharter.tar
           docker image ls -a
-      - name: Run KEGGCharter
+      - name: Run KEGGCharter with "input-quantification" and "input-taxonomy" parameters
         run: docker run keggcharter /bin/bash -c "keggcharter -f KEGGCharter/cicd/keggcharter_input.tsv -rd resources_directory -keggc 'KEGG' -koc 'KO' -ecc 'EC number' -cogc 'COG ID' -iq -it "My community" -mm 00680"
 
   include-missing-genomes:
@@ -88,7 +88,7 @@ jobs:
         run: |
           docker load --input /tmp/keggcharter.tar
           docker image ls -a
-      - name: Run KEGGCharter
+      - name: Run KEGGCharter with "include-missing-genomes" parameter
         run: docker run keggcharter /bin/bash -c "keggcharter -f KEGGCharter/cicd/keggcharter_input.tsv -rd resources_directory -keggc 'KEGG' -koc 'KO' -ecc 'EC number' -cogc 'COG ID' -qcol MP1,MP2,MP3,MP4 -tc 'Taxonomic lineage (SPECIES)' -mm 00680 --include-missing-genomes"
 
   map-all:
@@ -104,5 +104,5 @@ jobs:
         run: |
           docker load --input /tmp/keggcharter.tar
           docker image ls -a
-      - name: Run KEGGCharter
+      - name: Run KEGGCharter with "map-all" parameter
         run: docker run keggcharter /bin/bash -c "keggcharter -f KEGGCharter/cicd/keggcharter_input.tsv -rd resources_directory -keggc 'KEGG' -koc 'KO' -ecc 'EC number' -cogc 'COG ID' -qcol MP1,MP2,MP3,MP4 -tc 'Taxonomic lineage (SPECIES)' -mm 00680 --map-all"

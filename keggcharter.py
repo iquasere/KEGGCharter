@@ -79,7 +79,8 @@ def get_arguments():
 
     args = parser.parse_args()
     if args.show_available_maps:
-        sys.exit(kegg_metabolic_maps().to_string(index=False))
+        print(kegg_metabolic_maps().to_string(index=False))
+        sys.exit()
     args.output = args.output.rstrip('/')
     for directory in [
         f'{args.output}/{folder}' for folder in ['maps', 'json']] + [
