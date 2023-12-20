@@ -418,7 +418,7 @@ class KEGGPathwayMap:
         name = self.name.split(':')[-1]
         # Write JSON data to a file
         with open(f'{output}/json/potential_{name}.json', 'w') as file:
-            json.dump(box2taxon, file, indent=4)
+            json.dump(box2taxon, file, indent=2)
         self.pathway_box_list(box2taxon, dic_colors)  # for every box with KOs identified from the most abundant taxa, sub-boxes are created with colours of the corresponding taxa
         self.to_pdf(f'{output}/maps/potential_{name}.pdf')
         self.create_potential_legend(
@@ -461,10 +461,9 @@ class KEGGPathwayMap:
         box2colors = self.pathway_boxes_differential(df)
 
         name = self.name.split(':')[-1]
-        json_data = json.dumps(box2colors)
         # Write JSON data to a file
         with open(f'{output}/json/differential_{name}.json', 'w') as file:
-            file.write(json_data)
+            json.dump(box2colors, file, indent=2)
         self.to_pdf(f'{output}/maps/differential_{name}.pdf')
 
         self.differential_colorbar(df, f'{output}/maps/differential_{name}_legend.png')
