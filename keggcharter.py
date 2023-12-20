@@ -81,7 +81,9 @@ def get_arguments():
     if args.show_available_maps:
         sys.exit(kegg_metabolic_maps().to_string(index=False))
     args.output = args.output.rstrip('/')
-    for directory in [args.output] + [f'{args.resources_directory}/{folder}' for folder in ['', 'kc_kgmls', 'kc_csvs']]:
+    for directory in [
+        f'{args.output}/{folder}' for folder in ['maps', 'json']] + [
+            f'{args.resources_directory}/{folder}' for folder in ['', 'kc_kgmls', 'kc_csvs']]:
         if not os.path.isdir(directory):
             Path(directory).mkdir(parents=True, exist_ok=True)
             print(f'Created {directory}')
@@ -156,15 +158,17 @@ def read_input_file(args: argparse.Namespace) -> pd.DataFrame:
             result = pd.read_csv(args.file, sep='\t', low_memory=False)
     except Exception as e:          # Something happened reading the file. Could it be CSV?
         error_exit(f'Failure to read file! Input file can only be Excel (ending in .xlsx) or TSV.\n{e}')
+    # check if all columns supposed to be in the input data are in the input data
     for col in [args.taxa_column, args.kegg_column, args.ko_column, args.ec_column, args.cog_column
                 ] + args.quantification_columns:
         if col:
-            if col not in result.columns:   # check if all columns supposed to be in the input data are in the input data
+            if col not in result.columns:
                 error_exit(f'"{col}" column not in input file! Exiting...')
-            for bad_char in [';', ' ']:     # There can be no bad char in columns with functional IDs. Only commas!
-                if result[col].str.contains(bad_char).sum() > 0:
-                    error_exit(f'BAD CHARACTER: "{col}" column contains at least one "{bad_char}". '
-                               f'Only commas are allowed as separator.')
+    for col in [args.kegg_column, args.ko_column, args.ec_column, args.cog_column]:
+        for bad_char in [';', ' ']:     # There can be no bad char in columns with functional IDs. Only commas!
+            if result[col].str.contains(bad_char).sum() > 0:
+                error_exit(f'BAD CHARACTER: "{col}" column contains at least one "{bad_char}". '
+                           f'Only commas are allowed as separator.')
     return result
 
 
@@ -270,6 +274,7 @@ def make_cog2ko(output: str, threads: int = 15) -> pd.DataFrame:
 
 
 def cog2ko(input_ids: list, in_col: str, out_col: str, cog2ko_file: str, threads: int = 15) -> pd.DataFrame:
+    print(f'Converting {len(input_ids)} COGs to KOs through the COG2KO database.')
     result = pd.DataFrame(input_ids, columns=[in_col])
     if len(input_ids) == 0:
         return result
@@ -608,8 +613,7 @@ def chart_map(
     mmap = KGML_parser.read(open(kgml_filename))        # need to re-read the file because it's modified by the function
     kegg_pathway_map = KEGGPathwayMap(pathway=mmap, ec_list=ec_list)
     kegg_pathway_map.differential_expression_sample(
-        data, quantification_columns, ko_column, mmaps2taxa=mmaps2taxa, taxa_column=taxa_column,
-        output_basename=f'{output}/differential')
+        data, quantification_columns, ko_column, mmaps2taxa=mmaps2taxa, taxa_column=taxa_column, output=output)
     plt.close()
 
 
@@ -659,7 +663,7 @@ def main():
             kegg_column=args.kegg_column,
             ko_column=args.ko_column,
             ec_column=args.ec_column,
-            cog_column=args.column,
+            cog_column=args.cog_column,
             cog2ko_file=f'{sys.path[0]}/cog2ko_keggcharter.tsv',
             threads=args.threads,
             step=args.step)
