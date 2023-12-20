@@ -161,7 +161,7 @@ def read_input_file(args: argparse.Namespace) -> pd.DataFrame:
         error_exit(f'Failure to read file! Input file can only be Excel (ending in .xlsx) or TSV.\n{e}')
     # check if all columns supposed to be in the input data are in the input data
     for col in [args.taxa_column, args.kegg_column, args.ko_column, args.ec_column, args.cog_column
-                ] + args.quantification_columns:
+                ] + args.quantification_columns if args.quantification_columns else []:
         if col:
             if col not in result.columns:
                 error_exit(f'"{col}" column not in input file! Exiting...')
