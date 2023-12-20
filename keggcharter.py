@@ -166,10 +166,11 @@ def read_input_file(args: argparse.Namespace) -> pd.DataFrame:
             if col not in result.columns:
                 error_exit(f'"{col}" column not in input file! Exiting...')
     for col in [args.kegg_column, args.ko_column, args.ec_column, args.cog_column]:
-        for bad_char in [';', ' ']:     # There can be no bad char in columns with functional IDs. Only commas!
-            if result[col].str.contains(bad_char).sum() > 0:
-                error_exit(f'BAD CHARACTER: "{col}" column contains at least one "{bad_char}". '
-                           f'Only commas are allowed as separator.')
+        if col:
+            for bad_char in [';', ' ']:     # There can be no bad char in columns with functional IDs. Only commas!
+                if result[col].str.contains(bad_char).sum() > 0:
+                    error_exit(f'BAD CHARACTER: "{col}" column contains at least one "{bad_char}". '
+                               f'Only commas are allowed as separator.')
     return result
 
 
