@@ -73,7 +73,7 @@ jobs:
           docker load --input /tmp/keggcharter.tar
           docker image ls -a
       - name: Run KEGGCharter with "input-quantification" and "input-taxonomy" parameters
-        run: docker run keggcharter /bin/bash -c "keggcharter -f KEGGCharter/cicd/keggcharter_input.tsv -rd resources_directory -keggc 'KEGG' -koc 'KO' -ecc 'EC number' -cogc 'COG ID' -iq -it "My community" -mm 00680"
+        run: docker run keggcharter /bin/bash -c "keggcharter -f KEGGCharter/cicd/keggcharter_input.tsv -rd resources_directory -keggc 'KEGG' -koc 'KO' -ecc 'EC number' -cogc 'COG ID' -iq -it 'My community' -mm 00680"
 
   include-missing-genomes:
     runs-on: ubuntu-latest

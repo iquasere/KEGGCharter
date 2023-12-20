@@ -298,11 +298,9 @@ class KEGGPathwayMap:
         dataframe = dataframe.apply(conv_rgb_hex)
         dataframe = dataframe[dataframe.columns.tolist()]
         nrboxes = len(dataframe.columns.tolist())  # number of samples
-        box2colors = {}
         for box in dataframe.index.tolist():
             boxidx = self.ortho_ids_to_pos[box]  # get box index
             box_colors = dataframe.loc[box].tolist()
-            box2colors[box] = box_colors
             paired = nrboxes % 2 == 0
             for i in range(nrboxes):
                 newrecord = create_box_heatmap(
@@ -314,7 +312,6 @@ class KEGGPathwayMap:
                     self.orthologs[boxidx].graphics.append(newrecord)
             if self.orthologs[boxidx].graphics[0].width is not None:  # TODO - should check more deeply why sometimes width is None
                 create_tile_box(self.orthologs[boxidx])
-        return box2colors
 
 
     def grey_boxes(self, box_list):
@@ -457,21 +454,19 @@ class KEGGPathwayMap:
         if len(df) == 0:
             return 1
         df = df.groupby('Boxes')[samples].sum()
-
-        box2colors = self.pathway_boxes_differential(df)
-
+        df1 = df.copy()
+        self.pathway_boxes_differential(df)
         name = self.name.split(':')[-1]
-        # Write JSON data to a file
-        with open(f'{output}/json/differential_{name}.json', 'w') as file:
-            json.dump(box2colors, file, indent=2)
         self.to_pdf(f'{output}/maps/differential_{name}.pdf')
-
         self.differential_colorbar(df, f'{output}/maps/differential_{name}_legend.png')
-
         self.add_legend(
             f'{output}/maps/differential_{name}.pdf', f'{output}/maps/differential_{name}_legend.png',
             f'{output}/maps/differential_{self.title.replace("/", "|")}.png')
-
+        # Write JSON data to a file
+        df = df1.reset_index()
+        box2quant = {df.iloc[i]['Boxes']: df.iloc[i][samples].tolist() for i in range(len(df))}
+        with open(f'{output}/json/differential_{name}.json', 'w') as file:
+            json.dump(box2quant, file, indent=2)
         return 0
 
     def add_legend(self, kegg_map_file, legend_file, output):
