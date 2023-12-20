@@ -37,6 +37,9 @@ def get_arguments():
         default=','.join(keggcharter_prokaryotic_maps()))
     parser.add_argument("-qcol", "--quantification-columns", help="Names of columns with quantification")
     parser.add_argument(
+        "-dq", "--distribute-quantification", default=False, action="store_true",
+        help="Quantification of each enzyme is divided by all KOs identified for it.")
+    parser.add_argument(
         "-tls", "--taxa-list", help="List of taxa to represent in genomic potential charts (comma separated)")  # TODO - must be tested
     parser.add_argument(
         "-not", "--number-of-taxa", type=int, default=10,
@@ -669,7 +672,9 @@ def main():
             cog2ko_file=f'{sys.path[0]}/cog2ko_keggcharter.tsv',
             threads=args.threads,
             step=args.step)
-        data = prepare_data_for_charting(data, ko_column='KO (KEGGCharter)', mt_cols=args.quantification_columns)
+        data = prepare_data_for_charting(
+            data, ko_column='KO (KEGGCharter)', mt_cols=args.quantification_columns,
+            distribute_quantification=args.distribute_quantification)
         data.to_csv(f'{args.output}/data_for_charting.tsv', sep='\t', index=False)
         if not args.input_taxonomy:
             taxon_to_mmap_to_orthologs = download_resources(
