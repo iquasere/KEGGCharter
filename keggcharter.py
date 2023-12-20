@@ -170,14 +170,14 @@ def read_input_file(args: argparse.Namespace) -> pd.DataFrame:
 
 def further_information(
         data: pd.DataFrame, output: str, kegg_column: str = None, ko_column: str = None, ec_column: str = None,
-        cog_column: str = None, resources_dir: str = None, threads: int = 15, step: int = 150
+        cog_column: str = None, cog2ko_file: str = None, threads: int = 15, step: int = 150
         ) -> (pd.DataFrame, str):
     """
     Adds KOs and EC numbers to the input data
     """
     data = get_cross_references(
         data, kegg_column=kegg_column, ko_column=ko_column, ec_column=ec_column, cog_column=cog_column, step=step,
-        resources_dir=resources_dir, threads=threads)
+        cog2ko_file=cog2ko_file, threads=threads)
     main_column = kegg_column if kegg_column is not None else ko_column if ko_column is not None else ec_column
     data = condense_data(data, main_column)
     data.to_csv(output, sep='\t', index=False)
@@ -236,7 +236,7 @@ def fix_cogs(cog):
         return 'C' + cog
 
 
-def make_cog2ko(resources_dir: str, threads: int = 15) -> pd.DataFrame:
+def make_cog2ko(output: str, threads: int = 15) -> pd.DataFrame:
     kos = pd.read_csv(StringIO(kegg_list('ko').read()), sep='\t', header=None)[0].tolist()
     ko_htmls = get_kos_htmls_multiprocess(kos, threads=threads)
     while len(ko_htmls) < len(kos):     # this should only be required one time, but who knows. Last time, 3 % failed (921 of 26430)
@@ -265,18 +265,18 @@ def make_cog2ko(resources_dir: str, threads: int = 15) -> pd.DataFrame:
     result = result.pivot_table(index='COG', values='KO', aggfunc=lambda x: ','.join(x)).reset_index()
     # There are some problems with COGs in KEGG. This fixes the ones I found.
     result['COG'] = result['COG'].apply(fix_cogs)
-    result.to_csv(f'{resources_dir}/cog2ko_kegg.tsv', sep='\t', index=False)
+    result.to_csv(output, sep='\t', index=False)
     return result
 
 
-def cog2ko(input_ids: list, in_col: str, out_col: str, resources_dir: str, threads: int = 15) -> pd.DataFrame:
+def cog2ko(input_ids: list, in_col: str, out_col: str, cog2ko_file: str, threads: int = 15) -> pd.DataFrame:
     result = pd.DataFrame(input_ids, columns=[in_col])
     if len(input_ids) == 0:
         return result
-    if os.path.isfile(f'{resources_dir}/cog2ko.tsv'):
-        cog2ko_df = pd.read_csv(f'{resources_dir}/cog2ko.tsv', sep='\t')
+    if os.path.isfile(cog2ko_file):
+        cog2ko_df = pd.read_csv(cog2ko_file, sep='\t')
     else:
-        cog2ko_df = make_cog2ko(resources_dir, threads=threads)
+        cog2ko_df = make_cog2ko(cog2ko_file, threads=threads)
     result = pd.merge(result, cog2ko_df, left_on=in_col, right_on='COG', how='left')
     del result['COG']
     result.rename(columns={'KO': out_col}, inplace=True)
@@ -325,7 +325,7 @@ def id2id(input_ids: list, in_col: str, out_col: str, in_type: str, out_type: st
 
 
 def ids_xref(
-        data: pd.DataFrame, in_col: str, out_col: str, in_type: str, resources_dir: str = None, step: int = 150,
+        data: pd.DataFrame, in_col: str, out_col: str, in_type: str, cog2ko_file: str = None, step: int = 150,
         threads: int = 15) -> pd.DataFrame:
     data[f'{in_col}_split'] = data[in_col].apply(lambda x: x.split(',') if type(x) != float else x)    # split by comma
     data = expand_by_list_column(data, column=f'{in_col}_split')
@@ -337,9 +337,9 @@ def ids_xref(
     elif in_type == 'ec':
         new_ids = id2id(ids, f'{in_col}_split', out_col, in_type='ec', out_type='ko', step=step)
     elif in_type == 'cog':
-        if resources_dir is None:       # this is only for me, if I forget
+        if cog2ko_file is None:       # this is only for me, if I forget
             error_exit('Must specify resources_dir when mapping COGs!')
-        new_ids = cog2ko(ids, f'{in_col}_split', out_col, resources_dir=resources_dir, threads=threads)
+        new_ids = cog2ko(ids, f'{in_col}_split', out_col, cog2ko_file=cog2ko_file, threads=threads)
     else:
         raise ValueError('ids_type must be one of: kegg, ko, ec, cog')
     data = pd.merge(data, new_ids, on=f'{in_col}_split', how='left')
@@ -354,7 +354,7 @@ def ids_xref(
 
 def get_cross_references(
         data: pd.DataFrame, kegg_column: str = None, ko_column: str = None, ec_column: str = None,
-        cog_column: str = None, resources_dir: str = None, threads: int = 15, step: int = 150) -> pd.DataFrame:
+        cog_column: str = None, cog2ko_file: str = None, threads: int = 15, step: int = 150) -> pd.DataFrame:
     # KEGG ID to KO -> if KO column is not set, KEGGCharter will get them through the KEGG API
     ko_cols = []    # cols with KOs
     ec_cols = []    # cols with EC numbers
@@ -372,7 +372,7 @@ def get_cross_references(
         ko_cols.append('KO (ec-column)'); ec_cols.append(ec_column); ec_cols.append('EC (ec-column)')
     if cog_column:
         data = ids_xref(
-            data, in_col=cog_column, out_col='KO (cog-column)', in_type='cog', resources_dir=resources_dir,
+            data, in_col=cog_column, out_col='KO (cog-column)', in_type='cog', cog2ko_file=cog2ko_file,
             threads=threads)
     # join all unique KOs in a column
     data['KO (KEGGCharter)'] = data[ko_cols].apply(
@@ -603,7 +603,7 @@ def chart_map(
     kegg_pathway_map = KEGGPathwayMap(pathway=mmap, ec_list=ec_list)
     kegg_pathway_map.genomic_potential_taxa(
         data, quantification_columns, ko_column, taxon_to_mmap_to_orthologs, mmaps2taxa=mmaps2taxa,
-        taxa_column=taxa_column, output_basename=f'{output}/potential', number_of_taxa=number_of_taxa,
+        taxa_column=taxa_column, output=output, number_of_taxa=number_of_taxa,
         grey_taxa=grey_taxa)
     mmap = KGML_parser.read(open(kgml_filename))        # need to re-read the file because it's modified by the function
     kegg_pathway_map = KEGGPathwayMap(pathway=mmap, ec_list=ec_list)
@@ -660,7 +660,7 @@ def main():
             ko_column=args.ko_column,
             ec_column=args.ec_column,
             cog_column=args.column,
-            resources_dir=args.resources_directory,
+            cog2ko_file=f'{sys.path[0]}/cog2ko_keggcharter.tsv',
             threads=args.threads,
             step=args.step)
         data = prepare_data_for_charting(data, ko_column='KO (KEGGCharter)', mt_cols=args.quantification_columns)

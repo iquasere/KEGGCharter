@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import json
 
 from Bio.KEGG.KGML import KGML_pathway
 from Bio.Graphics.KGML_vis import KGMLCanvas
@@ -297,10 +298,11 @@ class KEGGPathwayMap:
         dataframe = dataframe.apply(conv_rgb_hex)
         dataframe = dataframe[dataframe.columns.tolist()]
         nrboxes = len(dataframe.columns.tolist())  # number of samples
-
+        box2colors = {}
         for box in dataframe.index.tolist():
             boxidx = self.ortho_ids_to_pos[box]  # get box index
-            colors = dataframe.loc[box].tolist()
+            box_colors = dataframe.loc[box].tolist()
+            box2colors[box] = box_colors
             paired = nrboxes % 2 == 0
             for i in range(nrboxes):
                 newrecord = create_box_heatmap(
@@ -308,10 +310,12 @@ class KEGGPathwayMap:
                     # if nrboxes = 8, i * 2 - (nrboxes - 1) = -7,-5,-3,-1,1,3,5,7; if nrboxes = 9, i - int(nrboxes / 2) = -4,-3,-2,-1,0,1,2,3,4
                     paired=paired)
                 if newrecord != 1:  # TODO - assess why sometimes get 1
-                    newrecord.bgcolor = colors[i]
+                    newrecord.bgcolor = box_colors[i]
                     self.orthologs[boxidx].graphics.append(newrecord)
             if self.orthologs[boxidx].graphics[0].width is not None:  # TODO - should check more deeply why sometimes width is None
                 create_tile_box(self.orthologs[boxidx])
+        return box2colors
+
 
     def grey_boxes(self, box_list):
         for i in box_list:
@@ -352,7 +356,7 @@ class KEGGPathwayMap:
 
     def genomic_potential_taxa(
             self, data, samples, ko_column, taxon_to_mmap_to_orthologs, mmaps2taxa,
-            taxa_column='Taxonomic lineage (GENUS)', output_basename=None, number_of_taxa=10, grey_taxa='Other taxa'):
+            taxa_column='Taxonomic lineage (GENUS)', output=None, number_of_taxa=10, grey_taxa='Other taxa'):
         """
         Represents the genomic potential of the dataset for a certain taxa level,
         by coloring each taxon with a unique color
@@ -363,7 +367,7 @@ class KEGGPathwayMap:
         :param mmaps2taxa: dict - of taxa to color
         :param ko_column: str - column with KOs
         :param taxa_column: str - column with taxonomic classification
-        :param output_basename: str - basename for map outputs
+        :param output: str - basename for map outputs
         :param number_of_taxa: int - number of most abundant taxa to represent in each map
         :param grey_taxa: str - name of taxa to represent in grey
         """
@@ -411,16 +415,18 @@ class KEGGPathwayMap:
                             box2taxon[box].append(grey_taxa)
                         else:
                             box2taxon[box] = [grey_taxa]
-        self.pathway_box_list(box2taxon, dic_colors)  # for every box with KOs identified from the most abundant taxa, sub-boxes are created with colours of the corresponding taxa
         name = self.name.split(':')[-1]
-        name_pdf = f'{output_basename}_{name}.pdf'
-        self.to_pdf(name_pdf)
-
-        self.create_potential_legend(dic_colors.values(), dic_colors.keys(), name_pdf.replace('.pdf', '_legend.png'))
-
+        json_data = json.dumps(box2taxon)
+        # Write JSON data to a file
+        with open(f'{output}/json/potential_{name}.json', 'w') as file:
+            file.write(json_data)
+        self.pathway_box_list(box2taxon, dic_colors)  # for every box with KOs identified from the most abundant taxa, sub-boxes are created with colours of the corresponding taxa
+        self.to_pdf(f'{output}/maps/potential_{name}.pdf')
+        self.create_potential_legend(
+            dic_colors.values(), dic_colors.keys(), f'{output}/maps/potential_{name}_legend.png')
         self.add_legend(
-            name_pdf, name_pdf.replace('.pdf', '_legend.png'),
-            name_pdf.replace(name + '.pdf', self.title.replace('/', '|') + '.png'))
+            f'{output}/maps/potential_{name}.pdf', f'{output}/maps/potential_{name}_legend.png',
+            f'{output}/maps/potential_{self.title.replace("/", "|")}.png')
 
     def differential_colorbar(self, dataframe, filename):
         fig_size = (2, 3)
@@ -431,8 +437,7 @@ class KEGGPathwayMap:
         plt.savefig(filename, bbox_inches='tight')
 
     def differential_expression_sample(
-            self, data, samples, ko_column, mmaps2taxa, taxa_column='Taxonomic lineage (GENUS)',
-            output_basename=None):
+            self, data, samples, ko_column, mmaps2taxa, taxa_column='Taxonomic lineage (GENUS)', output=None):
         """
         Represents in small heatmaps the expression levels of each sample on the
         dataset present in the given pathway map.
@@ -441,7 +446,7 @@ class KEGGPathwayMap:
         :param ko_column: str - column with KOs to represent
         :param mmaps2taxa: dict - of taxa to color
         :param taxa_column: str - column with taxonomic classification
-        :param output_basename: string - basename of outputs
+        :param output: string - basename of outputs
         """
         if mmaps2taxa is not None:
             data = data[data[taxa_column].isin(mmaps2taxa[self.name.split('ko')[1]])]
@@ -454,17 +459,20 @@ class KEGGPathwayMap:
             return 1
         df = df.groupby('Boxes')[samples].sum()
 
-        self.pathway_boxes_differential(df)
+        box2colors = self.pathway_boxes_differential(df)
 
         name = self.name.split(':')[-1]
-        name_pdf = f'{output_basename}_{name}.pdf'
-        self.to_pdf(name_pdf)
+        json_data = json.dumps(box2colors)
+        # Write JSON data to a file
+        with open(f'{output}/json/differential_{name}.json', 'w') as file:
+            file.write(json_data)
+        self.to_pdf(f'{output}/maps/differential_{name}.pdf')
 
-        self.differential_colorbar(df, name_pdf.replace(".pdf", '_legend.png'))
+        self.differential_colorbar(df, f'{output}/maps/differential_{name}_legend.png')
 
         self.add_legend(
-            name_pdf, name_pdf.replace('.pdf', '_legend.png'),
-            name_pdf.replace(name + '.pdf', self.title.replace('/', '|') + '.png'))
+            f'{output}/maps/differential_{name}.pdf', f'{output}/maps/differential_{name}_legend.png',
+            f'{output}/maps/differential_{self.title.replace("/", "|")}.png')
 
         return 0
 
