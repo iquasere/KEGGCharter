@@ -21,7 +21,7 @@ import requests
 from lxml import html
 from keggpathway_map import KEGGPathwayMap, expand_by_list_column
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 
 
 def get_arguments():
@@ -84,6 +84,8 @@ def get_arguments():
     if args.show_available_maps:
         print(kegg_metabolic_maps().to_string(index=False))
         sys.exit()
+    if not (args.kegg_column or args.ko_column or args.ec_column or args.cog_column):
+        error_exit('Need to specify a column with either KEGG IDs, KOs, EC numbers or COGs!')
     args.output = args.output.rstrip('/')
     for directory in [
         f'{args.output}/{folder}' for folder in ['maps', 'json']] + [
@@ -393,8 +395,8 @@ def get_cross_references(
         lambda x: ','.join(set([elem for elem in x if elem is not np.nan])), axis=1)
     data['EC number (KEGGCharter)'] = data['EC number (KEGGCharter)'].apply(
         lambda x: ','.join(sorted(set(x.split(',')))))
-    if not (kegg_column or ko_column or ec_column):
-        error_exit('Need to specify a column with either KEGG IDs, KOs or EC numbers!')
+    if not (kegg_column or ko_column or ec_column or cog_column):
+        error_exit('Need to specify a column with either KEGG IDs, KOs, EC numbers or COGs!')
     return data
 
 
