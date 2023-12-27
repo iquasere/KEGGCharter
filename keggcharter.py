@@ -21,7 +21,7 @@ import requests
 from lxml import html
 from keggpathway_map import KEGGPathwayMap, expand_by_list_column
 
-__version__ = "1.0.1"
+__version__ = "1.0.3"
 
 
 def get_arguments():
