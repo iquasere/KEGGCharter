@@ -150,6 +150,15 @@ def read_input():
     return args, data
 
 
+def bad_value(cell_value, pattern):
+    pattern = re.compile(pattern)
+    values = cell_value.split(',')
+    for val in values:
+        if not pattern.match(val):
+            return True
+    return False
+
+
 def read_input_file(args: argparse.Namespace) -> pd.DataFrame:
     timed_message('Reading input data.')
     if not os.path.isfile(args.file):
@@ -167,12 +176,17 @@ def read_input_file(args: argparse.Namespace) -> pd.DataFrame:
         if col:
             if col not in result.columns:
                 sys.exit(f'"{col}" column not in input file! Exiting...')
-    for col in [args.kegg_column, args.ko_column, args.ec_column, args.cog_column]:
-        if col:
-            for bad_char in [';', ' ']:     # There can be no bad char in columns with functional IDs. Only commas!
-                if result[col].str.contains(bad_char).sum() > 0:
-                    sys.exit(f'BAD CHARACTER: "{col}" column contains at least one "{bad_char}". '
-                               f'Only commas are allowed as separator.')
+    patterns = {
+        "kegg_column": (r"^[A-Za-z]{3}:.+$", 'tax_id:KEGG_ID'),
+        "ko_column": (r"^K\d{5}$", 'KXXXXX'),
+        "ec_column": (r"^[1-9]\d*(\.\d+){3}(,[1-9]\d*(\.\d+){3})*$", 'X.X.X.X'),
+        "cog_column": (r"^COG\d{4}$", 'COGXXXX')
+    }
+    for col in ["kegg_column", "ko_column", "ec_column", "cog_column"]:
+        if getattr(args, col):
+            if result[col].apply(bad_value, patterns[col][0]).sum() > 0:
+                sys.exit(f"Invalid format for '{getattr(args, col)}' column. Use only '{patterns[col][1]}' format, "
+                         f"optionally separated by commas.")
     return result
 
 
