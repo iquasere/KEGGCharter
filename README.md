@@ -122,7 +122,7 @@ In these cases, KEGGCharter may use mock imputations of quantification and/or ta
 
 To input mock quantification, run with the ```--input-quantification``` parameter. This will attribute a quantification 
 of 1 to every protein in the input dataset.
-This replaces the ```--genomic-columns``` parameter.
+This replaces the ```--quantification-columns``` parameter.
 
 To input mock taxonomy, run with the ```--input-taxonomy [mock taxonomy]``` parameter, where ```[mock taxonomy]``` 
 should be replaced with the value to be presented in the maps. This will attribute that taxonomic classification to 

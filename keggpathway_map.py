@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-import json
 
 from Bio.KEGG.KGML import KGML_pathway
 from Bio.Graphics.KGML_vis import KGMLCanvas
@@ -12,6 +11,7 @@ import pandas as pd
 from re import search
 import sys
 import time
+from matplotlib.colors import PowerNorm, to_hex
 
 
 def set_bgcolor(pathway_element, color):
@@ -155,16 +155,10 @@ def add_blank_space(image_pil, width, height, image_mode='RGB'):
 
 
 def expand_by_list_column(df, column):
-    if len(df) == 0:
-        return pd.DataFrame()
-    na_df = df[df[column].isnull()]
-    non_na_df = df[df[column].notnull()].reset_index(drop=True)
-    lens = [len(item) for item in non_na_df[column]]
-    non_na_dict = {col: np.repeat(non_na_df[col].values, lens) for col in non_na_df.columns}
-    non_na_dict[column] = np.concatenate(non_na_df[column].values)
-    if len(na_df) == 0:
-        return pd.DataFrame(non_na_dict)
-    return pd.concat([na_df, pd.DataFrame(non_na_dict)])
+    expanded_df = df.copy()
+    expanded_df = expanded_df.explode(column)
+    expanded_df.reset_index(drop=True, inplace=True)
+    return expanded_df.reset_index(drop=True)
 
 
 def taxa_colors(hex_values=None, ncolor=1):
@@ -283,24 +277,25 @@ class KEGGPathwayMap:
             if self.orthologs[boxidx].graphics[0].width is not None:
                 create_tile_box(self.orthologs[boxidx])
 
-    def pathway_boxes_differential(self, dataframe, colormap="coolwarm"):
+    def pathway_boxes_differential(self, df, colormap_name="viridis"):
         """
         Represents expression values present in a dataframe in the
         pathway map
-        :param dataframe: pandas DataFrame with each column representing a sample
+        :param fdf: pandas DataFrame with each column representing a sample
         and index corresponding to int list index of the ortholog element in the
         pathway
-        :param colormap: str representing a costum matplotlib colormap to be used
+        :param colormap_name: str representing a costum matplotlib colormap to be used
         """
-        norm = cm.colors.Normalize(vmin=dataframe.min().min(), vmax=dataframe.max().max())
-        colormap = cm.get_cmap(colormap)
-        dataframe = dataframe.apply(conv_value_rgb, args=(colormap, norm))
-        dataframe = dataframe.apply(conv_rgb_hex)
-        dataframe = dataframe[dataframe.columns.tolist()]
-        nrboxes = len(dataframe.columns.tolist())  # number of samples
-        for box in dataframe.index.tolist():
-            boxidx = self.ortho_ids_to_pos[box]  # get box index
-            box_colors = dataframe.loc[box].tolist()
+        norm = cm.colors.Normalize(vmin=0, vmax=df.max().max())
+        cmap = colormaps.get_cmap(colormap_name)
+        # normalize values to put them between 0 and 1, and obtain RGB values
+        df = pd.DataFrame([[val[0], val[1]] for val in cmap(norm(df))], columns=df.columns, index=df.index)
+        for col in df.columns:
+            df[col] = df[col].apply(to_hex)     # obtain HEX values
+        nrboxes = len(df.columns)               # number of mini-boxes for each box
+        for box in df.index.tolist():
+            boxidx = self.ortho_ids_to_pos[box]     # get box index
+            box_colors = df.loc[box].tolist()
             paired = nrboxes % 2 == 0
             for i in range(nrboxes):
                 newrecord = create_box_heatmap(
@@ -413,9 +408,6 @@ class KEGGPathwayMap:
                         else:
                             box2taxon[box] = [grey_taxa]
         name = self.name.split(':')[-1]
-        # Write JSON data to a file
-        with open(f'{output}/json/potential_{name}.json', 'w') as file:
-            json.dump(box2taxon, file, indent=2)
         self.pathway_box_list(box2taxon, dic_colors)  # for every box with KOs identified from the most abundant taxa, sub-boxes are created with colours of the corresponding taxa
         self.to_pdf(f'{output}/maps/potential_{name}.pdf')
         self.create_potential_legend(
@@ -423,17 +415,23 @@ class KEGGPathwayMap:
         self.add_legend(
             f'{output}/maps/potential_{name}.pdf', f'{output}/maps/potential_{name}_legend.png',
             f'{output}/maps/potential_{self.title.replace("/", "|")}.png')
+        box2taxon = {key: ','.join(set(value)) if type(value) != str else value for key, value in box2taxon.items()}
+        df = pd.DataFrame.from_dict(box2taxon, orient='index').reset_index()
+        df.columns = ['Box', 'Taxonomies']
+        df.to_csv(f'{output}/tsvs/potential_{name}.tsv', sep='\t', index=False)
 
-    def differential_colorbar(self, dataframe, filename):
+    def differential_colorbar(self, df, filename, colormap_name='viridis'):
         fig_size = (2, 3)
-        mpb = plt.pcolormesh(dataframe, cmap='coolwarm')
+        mpb = plt.pcolormesh(df, cmap=colormap_name)
         fig, ax = plt.subplots(figsize=fig_size)
         plt.colorbar(mpb, ax=ax)
         ax.remove()
         plt.savefig(filename, bbox_inches='tight')
 
+
     def differential_expression_sample(
-            self, data, samples, ko_column, mmaps2taxa, taxa_column='Taxonomic lineage (GENUS)', output=None):
+            self, data, samples, ko_column, mmaps2taxa, taxa_column='Taxonomic lineage (GENUS)', output=None,
+            colormap_name='viridis'):
         """
         Represents in small heatmaps the expression levels of each sample on the
         dataset present in the given pathway map.
@@ -443,6 +441,7 @@ class KEGGPathwayMap:
         :param mmaps2taxa: dict - of taxa to color
         :param taxa_column: str - column with taxonomic classification
         :param output: string - basename of outputs
+        :param colormap_name: string - name of colormap to use
         """
         if mmaps2taxa is not None:
             data = data[data[taxa_column].isin(mmaps2taxa[self.name.split('ko')[1]])]
@@ -454,19 +453,15 @@ class KEGGPathwayMap:
         if len(df) == 0:
             return 1
         df = df.groupby('Boxes')[samples].sum()
-        df1 = df.copy()
-        self.pathway_boxes_differential(df)
         name = self.name.split(':')[-1]
+        df.to_csv(f'{output}/tsvs/differential_{name}.tsv', sep='\t')
+        self.pathway_boxes_differential(df, colormap_name=colormap_name)
         self.to_pdf(f'{output}/maps/differential_{name}.pdf')
-        self.differential_colorbar(df, f'{output}/maps/differential_{name}_legend.png')
+        self.differential_colorbar(
+            df, f'{output}/maps/differential_{name}_legend.png', colormap_name=colormap_name)
         self.add_legend(
             f'{output}/maps/differential_{name}.pdf', f'{output}/maps/differential_{name}_legend.png',
             f'{output}/maps/differential_{self.title.replace("/", "|")}.png')
-        # Write JSON data to a file
-        df = df1.reset_index()
-        box2quant = {df.iloc[i]['Boxes']: df.iloc[i][samples].tolist() for i in range(len(df))}
-        with open(f'{output}/json/differential_{name}.json', 'w') as file:
-            json.dump(box2quant, file, indent=2)
         return 0
 
     def add_legend(self, kegg_map_file, legend_file, output):

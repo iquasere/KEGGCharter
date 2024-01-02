@@ -21,7 +21,7 @@ import requests
 from lxml import html
 from keggpathway_map import KEGGPathwayMap, expand_by_list_column
 
-__version__ = "1.0.3"
+__version__ = "1.1.0"
 
 
 def get_arguments():
@@ -71,6 +71,9 @@ def get_arguments():
         "--include-missing-genomes", default=False, action="store_true",
         help="Map the functions for KOs identified for organisms not present in KEGG Genomes.")
     parser.add_argument(
+        "--differential-colormap", default='viridis',
+        help="Matplotlib color map to use for differential maps [viridis]")
+    parser.add_argument(
         "--resume", action="store_true", default=False,
         help="If data inputed has already been analyzed by KEGGCharter.")
     parser.add_argument('-v', '--version', action='version', version='KEGGCharter ' + __version__)
@@ -85,10 +88,10 @@ def get_arguments():
         print(kegg_metabolic_maps().to_string(index=False))
         sys.exit()
     if not (args.kegg_column or args.ko_column or args.ec_column or args.cog_column):
-        error_exit('Need to specify a column with either KEGG IDs, KOs, EC numbers or COGs!')
+        sys.exit('Need to specify a column with either KEGG IDs, KOs, EC numbers or COGs!')
     args.output = args.output.rstrip('/')
     for directory in [
-        f'{args.output}/{folder}' for folder in ['maps', 'json']] + [
+        f'{args.output}/{folder}' for folder in ['maps', 'tsvs']] + [
             f'{args.resources_directory}/{folder}' for folder in ['', 'kc_kgmls', 'kc_csvs']]:
         if not os.path.isdir(directory):
             Path(directory).mkdir(parents=True, exist_ok=True)
@@ -114,11 +117,6 @@ def str2bool(v):
         return False
     else:
         raise ArgumentTypeError('Boolean value expected.')
-
-
-def error_exit(message):
-    print(message)
-    sys.exit(1)
 
 
 def timed_message(message):
@@ -154,27 +152,26 @@ def read_input():
 
 def read_input_file(args: argparse.Namespace) -> pd.DataFrame:
     timed_message('Reading input data.')
-    result = pd.DataFrame()
     if not os.path.isfile(args.file):
-        error_exit('Input file does not exist. Exiting...')
+        sys.exit('Input file does not exist. Exiting...')
     try:
         if args.file.endswith('.xlsx'):
             result = pd.read_excel(args.file)
         else:
             result = pd.read_csv(args.file, sep='\t', low_memory=False)
     except Exception as e:          # Something happened reading the file. Could it be CSV?
-        error_exit(f'Failure to read file! Input file can only be Excel (ending in .xlsx) or TSV.\n{e}')
+        sys.exit(f'Failure to read file! Input file can only be Excel (ending in .xlsx) or TSV.\n{e}')
     # check if all columns supposed to be in the input data are in the input data
     for col in [args.taxa_column, args.kegg_column, args.ko_column, args.ec_column, args.cog_column
                 ] + args.quantification_columns if args.quantification_columns else []:
         if col:
             if col not in result.columns:
-                error_exit(f'"{col}" column not in input file! Exiting...')
+                sys.exit(f'"{col}" column not in input file! Exiting...')
     for col in [args.kegg_column, args.ko_column, args.ec_column, args.cog_column]:
         if col:
             for bad_char in [';', ' ']:     # There can be no bad char in columns with functional IDs. Only commas!
                 if result[col].str.contains(bad_char).sum() > 0:
-                    error_exit(f'BAD CHARACTER: "{col}" column contains at least one "{bad_char}". '
+                    sys.exit(f'BAD CHARACTER: "{col}" column contains at least one "{bad_char}". '
                                f'Only commas are allowed as separator.')
     return result
 
@@ -350,17 +347,14 @@ def ids_xref(
         new_ids = id2id(ids, f'{in_col}_split', out_col, in_type='ec', out_type='ko', step=step)
     elif in_type == 'cog':
         if cog2ko_file is None:       # this is only for me, if I forget
-            error_exit('Must specify resources_dir when mapping COGs!')
+            sys.exit('Must specify resources_dir when mapping COGs!')
         new_ids = cog2ko(ids, f'{in_col}_split', out_col, cog2ko_file=cog2ko_file, threads=threads)
     else:
         raise ValueError('ids_type must be one of: kegg, ko, ec, cog')
     data = pd.merge(data, new_ids, on=f'{in_col}_split', how='left')
-    data = data.drop(columns=[f'{in_col}_split'])
-    other_cols = [col for col in data.columns if col not in [in_col, out_col]]
-    result = pd.concat([
-        data[other_cols].drop_duplicates(),
-        data.groupby(in_col)[out_col].agg(lambda x: ','.join(map(str, set([val for val in x if type(val) != float])))
-                                          ).reset_index()], axis=1)[data.columns].replace('', np.nan)
+    del data[f'{in_col}_split']
+    result = data.groupby([col for col in data.columns if col != out_col], as_index=False).agg({
+        out_col: lambda x: ','.join(set(x))})
     return result
 
 
@@ -396,7 +390,7 @@ def get_cross_references(
     data['EC number (KEGGCharter)'] = data['EC number (KEGGCharter)'].apply(
         lambda x: ','.join(sorted(set(x.split(',')))))
     if not (kegg_column or ko_column or ec_column or cog_column):
-        error_exit('Need to specify a column with either KEGG IDs, KOs, EC numbers or COGs!')
+        sys.exit('Need to specify a column with either KEGG IDs, KOs, EC numbers or COGs!')
     return data
 
 
@@ -609,8 +603,8 @@ def get_mmaps2taxa(taxon_to_mmap_to_orthologs):
 
 def chart_map(
         kgml_filename, ec_list, data, taxon_to_mmap_to_orthologs, mmaps2taxa, output=None, ko_column=None,
-        taxa_column=None, quantification_columns=None, number_of_taxa=10,
-        grey_taxa='Other taxa'):
+        taxa_column=None, quantification_columns=None, number_of_taxa=10, grey_taxa='Other taxa',
+        differential_colormap='viridis'):
     mmap = KGML_parser.read(open(kgml_filename))
     kegg_pathway_map = KEGGPathwayMap(pathway=mmap, ec_list=ec_list)
     kegg_pathway_map.genomic_potential_taxa(
@@ -620,7 +614,8 @@ def chart_map(
     mmap = KGML_parser.read(open(kgml_filename))        # need to re-read the file because it's modified by the function
     kegg_pathway_map = KEGGPathwayMap(pathway=mmap, ec_list=ec_list)
     kegg_pathway_map.differential_expression_sample(
-        data, quantification_columns, ko_column, mmaps2taxa=mmaps2taxa, taxa_column=taxa_column, output=output)
+        data, quantification_columns, ko_column, mmaps2taxa=mmaps2taxa, taxa_column=taxa_column, output=output,
+        colormap_name=differential_colormap)
     plt.close()
 
 
@@ -704,7 +699,8 @@ def main():
                 taxa_column=args.taxa_column,
                 quantification_columns=args.quantification_columns,
                 number_of_taxa=args.number_of_taxa,
-                grey_taxa=('Other taxa' if args.input_taxonomy is None else args.input_taxonomy))
+                grey_taxa=('Other taxa' if args.input_taxonomy is None else args.input_taxonomy),
+                differential_colormap=args.differential_colormap)
         else:
             print(f'Analysis of map {args.metabolic_maps[i]} failed! Map might have been deleted, '
                   f'for more info raise an issue at https://github.com/iquasere/KEGGCharter/issues')
