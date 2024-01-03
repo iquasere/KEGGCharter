@@ -151,6 +151,8 @@ def read_input():
 
 
 def bad_value(cell_value, pattern):
+    if type(cell_value) == float:
+        return False
     pattern = re.compile(pattern)
     values = cell_value.split(',')
     for val in values:
