@@ -183,8 +183,8 @@ def read_input_file(args: argparse.Namespace) -> pd.DataFrame:
         "cog_column": (r"^COG\d{4}$", 'COGXXXX')
     }
     for col in ["kegg_column", "ko_column", "ec_column", "cog_column"]:
-        if getattr(args, col) is not None:      # the "if getattr(args, col)" does not work here, returns True
-            if result[col].apply(bad_value, patterns[col][0]).sum() > 0:
+        if getattr(args, col):
+            if result[getattr(args, col)].apply(bad_value, patterns[col][0]).sum() > 0:
                 sys.exit(f"Invalid format for '{getattr(args, col)}' column. Use only '{patterns[col][1]}' format, "
                          f"optionally separated by commas.")
     return result
