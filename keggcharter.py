@@ -90,12 +90,6 @@ def get_arguments():
     if not (args.kegg_column or args.ko_column or args.ec_column or args.cog_column):
         sys.exit('Need to specify a column with either KEGG IDs, KOs, EC numbers or COGs!')
     args.output = args.output.rstrip('/')
-    for directory in [
-        f'{args.output}/{folder}' for folder in ['maps', 'tsvs']] + [
-            f'{args.resources_directory}/{folder}' for folder in ['', 'kc_kgmls', 'kc_csvs']]:
-        if not os.path.isdir(directory):
-            Path(directory).mkdir(parents=True, exist_ok=True)
-            print(f'Created {directory}')
     if not hasattr(args, 'quantification_columns'):
         input_quantification = str2bool(
             'No quantification columns specified! Do you want to use mock quantification? '
@@ -139,6 +133,12 @@ def read_input():
     args.metabolic_maps = args.metabolic_maps.split(',') if args.metabolic_maps else None
     args.quantification_columns = args.quantification_columns.split(',') if args.quantification_columns else None
     data = read_input_file(args)
+    for directory in [
+        f'{args.output}/{folder}' for folder in ['maps', 'tsvs']] + [
+            f'{args.resources_directory}/{folder}' for folder in ['', 'kc_kgmls', 'kc_csvs']]:
+        if not os.path.isdir(directory):
+            Path(directory).mkdir(parents=True, exist_ok=True)
+            print(f'Created {directory}')
     if args.input_quantification:
         data['Quantification (KEGGCharter)'] = [1] * len(data)
         args.quantification_columns = ['Quantification (KEGGCharter)']
@@ -183,7 +183,7 @@ def read_input_file(args: argparse.Namespace) -> pd.DataFrame:
         "cog_column": (r"^COG\d{4}$", 'COGXXXX')
     }
     for col in ["kegg_column", "ko_column", "ec_column", "cog_column"]:
-        if getattr(args, col):
+        if getattr(args, col) is not None:      # the "if getattr(args, col)" does not work here, returns True
             if result[col].apply(bad_value, patterns[col][0]).sum() > 0:
                 sys.exit(f"Invalid format for '{getattr(args, col)}' column. Use only '{patterns[col][1]}' format, "
                          f"optionally separated by commas.")
