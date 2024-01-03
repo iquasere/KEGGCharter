@@ -370,7 +370,7 @@ def ids_xref(
     data = pd.merge(data, new_ids, on=f'{in_col}_split', how='left')
     del data[f'{in_col}_split']
     result = data.groupby([col for col in data.columns if col != out_col], as_index=False).agg({
-        out_col: lambda x: ','.join(set(x) if type(x) != float else x)})
+        out_col: lambda x: ','.join(set([val for val in x if type(val) != float]))})
     return result
 
 

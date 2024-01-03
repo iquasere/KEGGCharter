@@ -281,7 +281,7 @@ class KEGGPathwayMap:
         """
         Represents expression values present in a dataframe in the
         pathway map
-        :param fdf: pandas DataFrame with each column representing a sample
+        :param df: pandas DataFrame with each column representing a sample
         and index corresponding to int list index of the ortholog element in the
         pathway
         :param colormap_name: str representing a costum matplotlib colormap to be used
@@ -289,7 +289,7 @@ class KEGGPathwayMap:
         norm = cm.colors.Normalize(vmin=0, vmax=df.max().max())
         cmap = colormaps.get_cmap(colormap_name)
         # normalize values to put them between 0 and 1, and obtain RGB values
-        df = pd.DataFrame([[val[0], val[1]] for val in cmap(norm(df))], columns=df.columns, index=df.index)
+        df = pd.DataFrame([[val for val in vals] for vals in cmap(norm(df))], columns=df.columns, index=df.index)
         for col in df.columns:
             df[col] = df[col].apply(to_hex)     # obtain HEX values
         nrboxes = len(df.columns)               # number of mini-boxes for each box
