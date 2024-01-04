@@ -21,7 +21,7 @@ import requests
 from lxml import html
 from keggpathway_map import KEGGPathwayMap, expand_by_list_column
 
-__version__ = "1.1.0"
+__version__ = "1.1.1"
 
 
 def get_arguments():
@@ -181,7 +181,7 @@ def read_input_file(args: argparse.Namespace) -> pd.DataFrame:
     patterns = {
         "kegg_column": (r"^[A-Za-z]{3}:.+$", 'tax_id:KEGG_ID'),
         "ko_column": (r"^K\d{5}$", 'KXXXXX'),
-        "ec_column": (r"^(\d+)(\.(\d+|-)){3}$", 'X.X.X.X'),
+        "ec_column": (r"^(\d+)(\.(\d+|-)){2}(\.(.*))?$", 'X.X.X.X'),
         "cog_column": (r"^COG\d{4}$", 'COGXXXX')
     }
     for col in ["kegg_column", "ko_column", "ec_column", "cog_column"]:
