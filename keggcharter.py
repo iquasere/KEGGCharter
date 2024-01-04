@@ -179,7 +179,7 @@ def read_input_file(args: argparse.Namespace) -> pd.DataFrame:
             if col not in result.columns:
                 sys.exit(f'"{col}" column not in input file! Exiting...')
     patterns = {
-        "kegg_column": (r"^[A-Za-z]{3}:.+$", 'tax_id:KEGG_ID'),
+        "kegg_column": (r"^[A-Za-z]+:.+$", 'tax_id:KEGG_ID'),
         "ko_column": (r"^K\d{5}$", 'KXXXXX'),
         "ec_column": (r"^(\d+)(\.(\d+|-)){2}(\.(.*))?$", 'X.X.X.X'),
         "cog_column": (r"^COG\d{4}$", 'COGXXXX')
