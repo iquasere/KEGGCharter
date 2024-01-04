@@ -367,17 +367,16 @@ def ids_xref(
         new_ids = cog2ko(ids, f'{in_col}_split', out_col, cog2ko_file=cog2ko_file, threads=threads)
     else:
         raise ValueError('ids_type must be one of: kegg, ko, ec, cog')
-    data = pd.merge(data, new_ids, on=f'{in_col}_split', how='left')
+    merged = pd.merge(data[[in_col, f'{in_col}_split']], new_ids, on=f'{in_col}_split', how='left')
+    merged = merged.groupby(in_col)[out_col].apply(
+        lambda x: ','.join(set([val for val in x if type(val) != float]))).reset_index()
     del data[f'{in_col}_split']
-    result = data.groupby([col for col in data.columns if col != out_col], as_index=False).agg({
-        out_col: lambda x: ','.join(set([val for val in x if type(val) != float]))})
-    return result
+    return pd.merge(data, merged, on=in_col, how='left')
 
 
 def get_cross_references(
         data: pd.DataFrame, kegg_column: str = None, ko_column: str = None, ec_column: str = None,
         cog_column: str = None, cog2ko_file: str = None, threads: int = 15, step: int = 150) -> pd.DataFrame:
-    # KEGG ID to KO -> if KO column is not set, KEGGCharter will get them through the KEGG API
     ko_cols = []    # cols with KOs
     ec_cols = []    # cols with EC numbers
     if kegg_column:
