@@ -308,7 +308,6 @@ class KEGGPathwayMap:
             if self.orthologs[boxidx].graphics[0].width is not None:  # TODO - should check more deeply why sometimes width is None
                 create_tile_box(self.orthologs[boxidx])
 
-
     def grey_boxes(self, box_list):
         for i in box_list:
             set_bgcolor(self.orthologs[i], "#7c7272")
@@ -416,8 +415,11 @@ class KEGGPathwayMap:
             f'{output}/maps/potential_{name}.pdf', f'{output}/maps/potential_{name}_legend.png',
             f'{output}/maps/potential_{self.title.replace("/", "|")}.png')
         box2taxon = {key: ','.join(set(value)) if type(value) != str else value for key, value in box2taxon.items()}
-        df = pd.DataFrame.from_dict(box2taxon, orient='index').reset_index()
-        df.columns = ['Box', 'Taxonomies']
+        if len(box2taxon) > 0:
+            df = pd.DataFrame.from_dict(box2taxon, orient='index').reset_index()
+            df.columns = ['Box', 'Taxonomies']
+        else:
+            df = pd.DataFrame(columns=['Box', 'Taxonomies'])
         df.to_csv(f'{output}/tsvs/potential_{name}.tsv', sep='\t', index=False)
 
     def differential_colorbar(self, df, filename, colormap_name='viridis'):

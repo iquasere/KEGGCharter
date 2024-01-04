@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+
 import argparse
 from argparse import ArgumentParser, ArgumentTypeError
 from multiprocessing import Manager, cpu_count
@@ -204,8 +205,8 @@ def further_information(
         cog2ko_file=cog2ko_file, threads=threads)
     main_column = kegg_column if kegg_column is not None else ko_column if ko_column is not None else ec_column
     data = condense_data(data, main_column)
+    timed_message(f'Saving new information to: {output}')
     data.to_csv(output, sep='\t', index=False)
-    timed_message(f'New information saved to {output}')
     return data, main_column
 
 
