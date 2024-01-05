@@ -203,11 +203,9 @@ def further_information(
     data = get_cross_references(
         data, kegg_column=kegg_column, ko_column=ko_column, ec_column=ec_column, cog_column=cog_column, step=step,
         cog2ko_file=cog2ko_file, threads=threads)
-    main_column = kegg_column if kegg_column is not None else ko_column if ko_column is not None else ec_column
-    data = condense_data(data, main_column)
     timed_message(f'Saving new information to: {output}')
     data.to_csv(output, sep='\t', index=False)
-    return data, main_column
+    return data
 
 
 def split_list(a, n):
@@ -378,6 +376,8 @@ def ids_xref(
 def get_cross_references(
         data: pd.DataFrame, kegg_column: str = None, ko_column: str = None, ec_column: str = None,
         cog_column: str = None, cog2ko_file: str = None, threads: int = 15, step: int = 150) -> pd.DataFrame:
+    if not (kegg_column or ko_column or ec_column or cog_column):
+        sys.exit('Need to specify a column with either KEGG IDs, KOs, EC numbers or COGs!')
     ko_cols = []    # cols with KOs
     ec_cols = []    # cols with EC numbers
     if kegg_column:
@@ -396,32 +396,19 @@ def get_cross_references(
         data = ids_xref(
             data, in_col=cog_column, out_col='KO (cog-column)', in_type='cog', cog2ko_file=cog2ko_file,
             threads=threads)
+        ko_cols.append('KO (cog-column)')
+    data.drop_duplicates(inplace=True)
     # join all unique KOs in a column
     data['KO (KEGGCharter)'] = data[ko_cols].apply(
-        lambda x: ','.join([elem for elem in x if elem is not np.nan]), axis=1)
-    data['KO (KEGGCharter)'] = data['KO (KEGGCharter)'].apply(lambda x: ','.join(sorted(set(x.split(',')))))
+        lambda x: ','.join([elem for elem in x if type(elem) != float]), axis=1)
+    data['KO (KEGGCharter)'] = data['KO (KEGGCharter)'].apply(
+        lambda x: ','.join(sorted(set([val for val in x.split(',') if len(val) > 0]))))
     # join all unique ECs in a column
     data['EC number (KEGGCharter)'] = data[ec_cols].apply(
-        lambda x: ','.join(set([elem for elem in x if elem is not np.nan])), axis=1)
+        lambda x: ','.join([elem for elem in x if type(elem) != float]), axis=1)
     data['EC number (KEGGCharter)'] = data['EC number (KEGGCharter)'].apply(
-        lambda x: ','.join(sorted(set(x.split(',')))))
-    if not (kegg_column or ko_column or ec_column or cog_column):
-        sys.exit('Need to specify a column with either KEGG IDs, KOs, EC numbers or COGs!')
+        lambda x: ','.join(sorted(set([val for val in x.split(',') if len(val) > 0]))))
     return data
-
-
-def condense_data(data, main_column):
-    onlykos = data[data['KO (KEGGCharter)'].notnull() & (data['EC number (KEGGCharter)'].isnull())][
-        [main_column, 'KO (KEGGCharter)']]
-    onlykos = onlykos.groupby(main_column).agg({'KO (KEGGCharter)': lambda x: ','.join(set(x))}).reset_index()
-    onlykos['EC number (KEGGCharter)'] = [np.nan] * len(onlykos)
-    wecs = data[data['EC number (KEGGCharter)'].notnull()][[main_column, 'KO (KEGGCharter)', 'EC number (KEGGCharter)']]
-    wecs = wecs.groupby(main_column).agg(
-        {'KO (KEGGCharter)': lambda x: ','.join(set([elem for elem in x if elem is not np.nan])),
-         'EC number (KEGGCharter)': lambda x: ','.join(set(x))}).reset_index()
-    del data['KO (KEGGCharter)']
-    del data['EC number (KEGGCharter)']
-    return pd.merge(data, pd.concat([onlykos, wecs]), on=main_column, how='left').drop_duplicates()
 
 
 def prepare_data_for_charting(
@@ -572,8 +559,7 @@ def download_resources(
     timed_message('Downloading resources')
     download_organism(resources_dir)
     taxa = ['ko'] + data[taxa_column].unique().tolist()
-    if np.nan in taxa:
-        taxa.remove(np.nan)
+    taxa = [taxon for taxon in taxa if taxa != np.nan]
     taxa_df = parse_organism(f'{resources_dir}/organism')
     taxon_to_mmap_to_orthologs = {}  # {'Keratinibaculum paraultunense' : {'00190': ['1', '2']}}
     if map_all:     # attribute all maps and all functions to all taxa, only limit by the data
@@ -675,7 +661,7 @@ def main():
         else:
             taxon_to_mmap_to_orthologs = None
     else:
-        data, main_column = further_information(
+        data = further_information(
             data,
             f'{args.output}/KEGGCharter_results.tsv',
             kegg_column=args.kegg_column,

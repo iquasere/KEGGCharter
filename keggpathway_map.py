@@ -6,12 +6,11 @@ from PIL import Image
 import numpy as np
 import os
 from subprocess import run
-from matplotlib import pyplot as plt, colors, colormaps, cm
+from matplotlib import pyplot as plt, colors, colormaps
 import pandas as pd
 from re import search
 import sys
-import time
-from matplotlib.colors import PowerNorm, to_hex
+from matplotlib.colors import to_hex
 
 
 def set_bgcolor(pathway_element, color):
@@ -176,7 +175,7 @@ def taxa_colors(hex_values=None, ncolor=1):
         return [colors.to_hex(color_scheme(i)) for i in range(ncolor)]
     for hex_value in hex_values:
         if not search(r'^#(?:[0-9a-fA-F]{3}){1,2}$', hex_value):
-            sys.exit(Exception("Colors aren't valid hex codes"))
+            sys.exit("Colors aren't valid hex codes")
     return hex_values  # has validated hex values and returns the original list
 
 
@@ -286,7 +285,7 @@ class KEGGPathwayMap:
         pathway
         :param colormap_name: str representing a costum matplotlib colormap to be used
         """
-        norm = cm.colors.Normalize(vmin=0, vmax=df.max().max())
+        norm = colors.Normalize(vmin=0, vmax=df.max().max())
         cmap = colormaps.get_cmap(colormap_name)
         # normalize values to put them between 0 and 1, and obtain RGB values
         df = pd.DataFrame([[val for val in vals] for vals in cmap(norm(df))], columns=df.columns, index=df.index)
@@ -406,6 +405,9 @@ class KEGGPathwayMap:
                             box2taxon[box].append(grey_taxa)
                         else:
                             box2taxon[box] = [grey_taxa]
+        if len(box2taxon) == 0:
+            print('No taxonomic information for this map!')
+            return
         name = self.name.split(':')[-1]
         self.pathway_box_list(box2taxon, dic_colors)  # for every box with KOs identified from the most abundant taxa, sub-boxes are created with colours of the corresponding taxa
         self.to_pdf(f'{output}/maps/potential_{name}.pdf')
@@ -430,7 +432,6 @@ class KEGGPathwayMap:
         ax.remove()
         plt.savefig(filename, bbox_inches='tight')
 
-
     def differential_expression_sample(
             self, data, samples, ko_column, mmaps2taxa, taxa_column='Taxonomic lineage (GENUS)', output=None,
             colormap_name='viridis'):
@@ -453,7 +454,8 @@ class KEGGPathwayMap:
         df = df[df['Boxes'].notnull()]
         df = expand_by_list_column(df, column='Boxes')
         if len(df) == 0:
-            return 1
+            print('No differential information for this map!')
+            return
         df = df.groupby('Boxes')[samples].sum()
         name = self.name.split(':')[-1]
         df.to_csv(f'{output}/tsvs/differential_{name}.tsv', sep='\t')
@@ -464,7 +466,6 @@ class KEGGPathwayMap:
         self.add_legend(
             f'{output}/maps/differential_{name}.pdf', f'{output}/maps/differential_{name}_legend.png',
             f'{output}/maps/differential_{self.title.replace("/", "|")}.png')
-        return 0
 
     def add_legend(self, kegg_map_file, legend_file, output):
         """
