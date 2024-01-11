@@ -22,7 +22,7 @@ import requests
 from lxml import html
 from keggpathway_map import KEGGPathwayMap, expand_by_list_column
 
-__version__ = "1.1.1"
+__version__ = "1.1.2"
 
 
 def get_arguments():
@@ -191,6 +191,48 @@ def read_input_file(args: argparse.Namespace) -> pd.DataFrame:
                 sys.exit(f"Invalid format for '{getattr(args, col)}' column. Use only '{patterns[col][1]}' format, "
                          f"optionally separated by commas.")
     return result
+
+
+def pre_mapping(args: argparse.Namespace, data: pd.DataFrame) -> (pd.DataFrame, Dict[str, Dict[str, List[str]]]):
+    # Get cross-references
+    if args.resume and os.path.isfile(f'{args.output}/data_for_charting.tsv'):
+        timed_message('Reading data for charting.')
+        data = pd.read_csv(f'{args.output}/data_for_charting.tsv', sep='\t', low_memory=False)
+    else:
+        data = further_information(
+            data,
+            f'{args.output}/KEGGCharter_results.tsv',
+            kegg_column=args.kegg_column,
+            ko_column=args.ko_column,
+            ec_column=args.ec_column,
+            cog_column=args.cog_column,
+            cog2ko_file=f'{sys.path[0]}/cog2ko_keggcharter.tsv',
+            threads=args.threads,
+            step=args.step)
+        data = prepare_data_for_charting(
+            data, ko_column='KO (KEGGCharter)', mt_cols=args.quantification_columns,
+            distribute_quantification=args.distribute_quantification)
+        timed_message('Saving data for charting.')
+        data.to_csv(f'{args.output}/data_for_charting.tsv', sep='\t', index=False)
+    # Get taxon to mmap to orthologs info
+    if args.resume and os.path.isfile(f'{args.output}/taxon_to_mmap_to_orthologs.json'):
+        if not args.input_taxonomy:
+            timed_message('Reading taxon_to_mmap_to_orthologs.')
+            with open(f'{args.output}/taxon_to_mmap_to_orthologs.json') as h:
+                taxon_to_mmap_to_orthologs = json.load(h)
+        else:
+            taxon_to_mmap_to_orthologs = None
+    else:
+        if not args.input_taxonomy:
+            taxon_to_mmap_to_orthologs = get_taxon_to_mmap_to_orthologs(
+                data, args.resources_directory, args.output, args.taxa_column, args.metabolic_maps,
+                map_all=args.map_all, map_non_kegg_genomes=args.include_missing_genomes)
+        else:
+            taxon_to_mmap_to_orthologs = None
+        timed_message('Saving taxon_to_mmap_to_orthologs.')
+        h = open(f"{args.output}/taxon_to_mmap_to_orthologs.json", "w")
+        json.dump(taxon_to_mmap_to_orthologs, h)
+    return data, taxon_to_mmap_to_orthologs
 
 
 def further_information(
@@ -417,6 +459,7 @@ def prepare_data_for_charting(
     """
     This function expands the dataframe by the KO column, so that each row has only one KO.
     """
+    timed_message('Preparing data for charting.')
     data = data[data[ko_column].notnull()].reset_index(drop=True)
     data[ko_column] = data[ko_column].apply(lambda x: x.split(','))     # for lines with multiple KOs
     if distribute_quantification:           # Divide the quantification by the number of KOs in the column
@@ -424,7 +467,6 @@ def prepare_data_for_charting(
             for col in mt_cols:
                 data[col] = data[col] / data[ko_column].apply(lambda x: len(x))
     data = expand_by_list_column(data, column=ko_column)
-    timed_message('Data prepared for charting.')
     return data
 
 
@@ -444,7 +486,7 @@ def kegg_metabolic_maps():
     return maps
 
 
-def write_kgml(mmap, output, organism='ko', max_tries=3):
+def get_kgml(mmap, output, organism='ko', max_tries=3):
     """
     This function is confusing, in that it both writes the KGML, and parses it.
     Still, it works, and for now that's enough.
@@ -468,7 +510,7 @@ def glob_re(pattern, strings):
     return filter(re.compile(pattern).match, strings)
 
 
-def write_kgmls(mmaps, out_dir, max_tries=3, org='ko'):
+def get_kgmls(mmaps, out_dir, max_tries=3, org='ko'):
     maps_done = [
         filename.split(org)[-1].rstrip('.xml') for filename in glob_re(fr'{org}\d+\.xml', os.listdir(out_dir))]
     mmap_to_orthologs = {}
@@ -481,8 +523,8 @@ def write_kgmls(mmaps, out_dir, max_tries=3, org='ko'):
         tries = 0
         done = False
         while tries < max_tries and not done:
-            orthologs = [orth.id for orth in write_kgml(mmap, f'{out_dir}/{org}{mmap}.xml', organism=org).orthologs]
-            genes = [gene.id for gene in write_kgml(mmap, f'{out_dir}/{org}{mmap}.xml', organism=org).genes]
+            orthologs = [orth.id for orth in get_kgml(mmap, f'{out_dir}/{org}{mmap}.xml', organism=org).orthologs]
+            genes = [gene.id for gene in get_kgml(mmap, f'{out_dir}/{org}{mmap}.xml', organism=org).genes]
             mmap_to_orthologs[mmap] = orthologs + genes
             done = True
         i += 1
@@ -543,7 +585,7 @@ def parse_organism(file):
     return pd.read_csv(file, sep='\t', usecols=[1, 2], header=None, index_col=1, names=['prefix', 'name'])
 
 
-def download_resources(
+def get_taxon_to_mmap_to_orthologs(
         data, resources_dir, out_dir, taxa_column, metabolic_maps, map_all=False, map_non_kegg_genomes=True):
     """
     Download all resources for a given dataframe
@@ -559,26 +601,26 @@ def download_resources(
     timed_message('Downloading resources')
     download_organism(resources_dir)
     taxa = ['ko'] + data[taxa_column].unique().tolist()
-    taxa = [taxon for taxon in taxa if taxa != np.nan]
+    # remove np.nan from taxa
+    taxa = [taxon for taxon in taxa if type(taxon) == str]
     taxa_df = parse_organism(f'{resources_dir}/organism')
     taxon_to_mmap_to_orthologs = {}  # {'Keratinibaculum paraultunense' : {'00190': ['1', '2']}}
     if map_all:     # attribute all maps and all functions to all taxa, only limit by the data
-        mmap_to_orthologs = write_kgmls(metabolic_maps, f'{resources_dir}/kc_kgmls', org='ko')
+        mmap_to_orthologs = get_kgmls(metabolic_maps, f'{resources_dir}/kc_kgmls', org='ko')
         taxon_to_mmap_to_orthologs = {taxon: mmap_to_orthologs for taxon in taxa}
     else:
         timed_message('Obtaining KEGG prefixes from inputted taxa')
         kegg_prefixes = [(taxon, taxon2prefix(taxon, taxa_df)) for taxon in taxa]
-        kegg_prefixes = [pair for pair in kegg_prefixes if pair[1] is not None]
         for taxon, kegg_prefix in tqdm(
                 kegg_prefixes, desc=f'Getting information for {len(kegg_prefixes) - 1} taxa', ascii=' >='):
             if kegg_prefix is not None:
                 taxon_mmaps = get_taxon_maps(kegg_prefix)
                 taxon_mmaps = [mmap for mmap in taxon_mmaps if mmap in metabolic_maps]  # select only inputted maps
-                taxon_to_mmap_to_orthologs[taxon] = write_kgmls(
+                taxon_to_mmap_to_orthologs[taxon] = get_kgmls(
                     taxon_mmaps, f'{resources_dir}/kc_kgmls', org=kegg_prefix)
             else:
                 if map_non_kegg_genomes:
-                    taxon_to_mmap_to_orthologs[taxon] = write_kgmls(
+                    taxon_to_mmap_to_orthologs[taxon] = get_kgmls(
                         metabolic_maps, f'{resources_dir}/kc_kgmls', org='ko')
                 else:
                     taxon_to_mmap_to_orthologs[taxon] = {}
@@ -636,7 +678,7 @@ def get_pathway_and_ec_list(rd, mmap):
         print(f'Some resources were not found for map [ko{mmap}]! Going to download them')
     if download:
         try:
-            write_kgml(mmap, f'{rd}/kc_kgmls/ko{mmap}.xml')
+            get_kgml(mmap, f'{rd}/kc_kgmls/ko{mmap}.xml')
             print(f'Got KGML for map [ko{mmap}]')
             set_text_boxes_kgml(
                 f'{rd}/kc_kgmls/ko{mmap}.xml', f'{rd}/kc_csvs/ko{mmap}.csv',
@@ -652,38 +694,7 @@ def get_pathway_and_ec_list(rd, mmap):
 
 def main():
     args, data = read_input()
-
-    if args.resume:
-        data = pd.read_csv(f'{args.output}/data_for_charting.tsv', sep='\t', low_memory=False)
-        if not args.input_taxonomy:
-            with open(f'{args.output}/taxon_to_mmap_to_orthologs.json') as h:
-                taxon_to_mmap_to_orthologs = json.load(h)
-        else:
-            taxon_to_mmap_to_orthologs = None
-    else:
-        data = further_information(
-            data,
-            f'{args.output}/KEGGCharter_results.tsv',
-            kegg_column=args.kegg_column,
-            ko_column=args.ko_column,
-            ec_column=args.ec_column,
-            cog_column=args.cog_column,
-            cog2ko_file=f'{sys.path[0]}/cog2ko_keggcharter.tsv',
-            threads=args.threads,
-            step=args.step)
-        data = prepare_data_for_charting(
-            data, ko_column='KO (KEGGCharter)', mt_cols=args.quantification_columns,
-            distribute_quantification=args.distribute_quantification)
-        data.to_csv(f'{args.output}/data_for_charting.tsv', sep='\t', index=False)
-        if not args.input_taxonomy:
-            taxon_to_mmap_to_orthologs = download_resources(
-                data, args.resources_directory, args.output, args.taxa_column, args.metabolic_maps,
-                map_all=args.map_all, map_non_kegg_genomes=args.include_missing_genomes)
-            h = open(f"{args.output}/taxon_to_mmap_to_orthologs.json", "w")
-            json.dump(taxon_to_mmap_to_orthologs, h)
-        else:
-            taxon_to_mmap_to_orthologs = None
-
+    data, taxon_to_mmap_to_orthologs = pre_mapping(args, data)
     mmaps2taxa = get_mmaps2taxa(taxon_to_mmap_to_orthologs) if not args.input_taxonomy else None        # '00190': ['Keratinibaculum paraultunense']
     timed_message(f'Creating KEGG Pathway representations for {len(args.metabolic_maps)} metabolic pathways.')
     for i in range(len(args.metabolic_maps)):
