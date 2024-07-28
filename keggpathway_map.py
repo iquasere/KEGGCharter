@@ -11,6 +11,7 @@ import pandas as pd
 from re import search
 import sys
 from matplotlib.colors import to_hex
+import json
 
 
 def set_bgcolor(pathway_element, color):
@@ -184,7 +185,7 @@ class KEGGPathwayMap:
     This class retrieves and manipulates KEGG metabolic maps from KEGG Pathway
     """
 
-    def __init__(self, pathway, ec_list):
+    def __init__(self, pathway, ec_list, keggcharter_info, q_cols, taxa_column):
         """
         Initialize object
         :param pathway: (Bio.KEGG.KGML.KGML_pathway.Pathway)
@@ -192,7 +193,7 @@ class KEGGPathwayMap:
         """
         self.pathway = pathway
         self.ko_boxes = {}
-        self.set_pathway(ec_list)
+        self.set_pathway(ec_list, keggcharter_info, q_cols, taxa_column)
         self.ortho_ids_to_pos = {self.pathway.orthologs[i].id: i for i in range(len(self.pathway.orthologs))}
 
     def __getattr__(self, item):
@@ -201,10 +202,11 @@ class KEGGPathwayMap:
             raise AttributeError
         return m
 
-    def set_pathway(self, ec_list):
+    def set_pathway(self, ec_list, keggcharter_info, q_cols, taxa_column):
         """
         Set pathway with KEGG Pathway ID
         """
+        boxes_names = []
         for i in range(len(self.orthologs)):
             set_bgcolor(self.orthologs[i], "#ffffff")  # set all boxes to white
             # self.set_fgcolor(self.pathway.orthologs[i], "#ffffff")             # This might be helpful in the future, if an additional layer of information is needed
@@ -214,14 +216,32 @@ class KEGGPathwayMap:
                     self.ko_boxes[ortholog] = [self.orthologs[i].id]
                 else:
                     self.ko_boxes[ortholog].append(self.orthologs[i].id)  # {'K16157':[0,13,432], 'K16158':[4,13,545]}
-
             # Set name as most abundant EC number, if no EC numbers are available use KO
             # I haven't found a way to increase the font of the ECs/KOs on the map. It seems none is available at the moment
             ecs = ec_list[i].split(',')
-            if len(ecs) > 0:
-                self.orthologs[i].graphics[0].name = max(set(ecs), key=ecs.count).split(':')[1]
-            else:
-                self.orthologs[i].graphics[0].name = orthologs_in_box[0].split(':')[1]
+            self.orthologs[i].graphics[0].name = (
+                max(set(ecs), key=ecs.count).split(':')[1] if len(ecs) > 0 else orthologs_in_box[0].split(':')[1])
+            boxes_names.append((self.orthologs[i].id, self.orthologs[i].graphics[0].name))
+        name = self.name.split(':')[-1]
+        pd.DataFrame(boxes_names, columns=['Box', 'Name (EC or KO)']).to_csv(
+            f'info/{name}_box2name.tsv', index=False, sep='\t')
+        boxes2ko = {}
+        for ko, boxes in self.ko_boxes.items():
+            for box in boxes:
+                if box not in boxes2ko.keys():
+                    boxes2ko[box] = []
+                boxes2ko[box].append(ko)
+        with open(f'info/{name}_box2kos.json', 'w') as outfile:
+            json.dump(boxes2ko, outfile)
+        data = keggcharter_info
+        print(data.columns)
+        for box, kos in boxes2ko.items():
+            data = data[data['KO (KEGGCharter)'].isin(kos)]
+            if len(data) > 0:
+                print(data)
+                data = data.groupby(taxa_column)[q_cols].sum().reset_index()
+                data.to_csv(f'info/{name}_{box}_info.tsv', sep='\t', index=False)
+            
 
     ############################################################################
     ####                          Operations                                ####
@@ -292,9 +312,11 @@ class KEGGPathwayMap:
         for col in df.columns:
             df[col] = df[col].apply(to_hex)     # obtain HEX values
         nrboxes = len(df.columns)               # number of mini-boxes for each box
+        boxes_colors = {}
         for box in df.index.tolist():
             boxidx = self.ortho_ids_to_pos[box]     # get box index
             box_colors = df.loc[box].tolist()
+            boxes_colors[box] = box_colors
             paired = nrboxes % 2 == 0
             for i in range(nrboxes):
                 newrecord = create_box_heatmap(
@@ -306,6 +328,7 @@ class KEGGPathwayMap:
                     self.orthologs[boxidx].graphics.append(newrecord)
             if self.orthologs[boxidx].graphics[0].width is not None:  # TODO - should check more deeply why sometimes width is None
                 create_tile_box(self.orthologs[boxidx])
+        return boxes_colors
 
     def grey_boxes(self, box_list):
         for i in box_list:
@@ -409,6 +432,10 @@ class KEGGPathwayMap:
             print('No taxonomic information for this map!')
             return
         name = self.name.split(':')[-1]
+        with open(f'info/{name}_boxes2taxon.json', 'w') as outfile:
+            json.dump(box2taxon, outfile)
+        with open(f'info/{name}_taxa2colors.json', 'w') as outfile:
+            json.dump(dic_colors, outfile)
         self.pathway_box_list(box2taxon, dic_colors)  # for every box with KOs identified from the most abundant taxa, sub-boxes are created with colours of the corresponding taxa
         self.to_pdf(f'{output}/maps/potential_{name}.pdf')
         self.create_potential_legend(
@@ -458,8 +485,10 @@ class KEGGPathwayMap:
             return
         df = df.groupby('Boxes')[samples].sum()
         name = self.name.split(':')[-1]
-        df.to_csv(f'{output}/tsvs/differential_{name}.tsv', sep='\t')
-        self.pathway_boxes_differential(df, colormap_name=colormap_name)
+        df.to_csv(f'{output}/tsvs/{name}_box2differential_colors.tsv', sep='\t')
+        boxes_colors = self.pathway_boxes_differential(df, colormap_name=colormap_name)
+        with open(f'info/{name}_boxes2quant_colors.json', 'w') as outfile:
+            json.dump(boxes_colors, outfile)
         self.to_pdf(f'{output}/maps/differential_{name}.pdf')
         self.differential_colorbar(
             df, f'{output}/maps/differential_{name}_legend.png', colormap_name=colormap_name)
@@ -473,7 +502,13 @@ class KEGGPathwayMap:
         :param kegg_map_file: str - filename of PDF kegg metabolic map
         :param legend_file: str - filename of PNG legend
         """
+        print('got here')
         pdf2png(kegg_map_file)
+        print('kegg_map_file:', kegg_map_file)
+        kegg_map_png = kegg_map_file.replace('.pdf', '.png')  # Nome do arquivo PNG gerado
+        original_image = Image.open(kegg_map_png)  # Abre o arquivo PNG gerado e armazena em um objeto
+        original_image.save('original_kegg_map.png')  # Opcional: Salva a imagem original para uso futuro
+        print('passed three lines')
         imgs = [Image.open(file) for file in [kegg_map_file.replace('.pdf', '.png'), legend_file]]
         imgs[0] = imgs[0].convert(
             'RGB')  # KEGG Maps are converted to RGB by pdftoppm, dunno if converting to RGBA adds any transparency

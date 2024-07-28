@@ -8,7 +8,7 @@ import numpy as np
 import os
 import pandas as pd
 from pathlib import Path
-from subprocess import run
+from subprocess import run 
 import sys
 from io import StringIO
 from time import time, gmtime, strftime, sleep
@@ -342,7 +342,9 @@ def cog2ko(input_ids: list, in_col: str, out_col: str, cog2ko_file: str, threads
     if os.path.isfile(cog2ko_file):
         cog2ko_df = pd.read_csv(cog2ko_file, sep='\t')
     else:
+        print('reading cog2ko')
         cog2ko_df = make_cog2ko(cog2ko_file, threads=threads)
+    print('read cog2ko')
     result = pd.merge(result, cog2ko_df, left_on=in_col, right_on='COG', how='left')
     del result['COG']
     result.rename(columns={'KO': out_col}, inplace=True)
@@ -412,6 +414,7 @@ def ids_xref(
     merged = merged.groupby(in_col)[out_col].apply(
         lambda x: ','.join(set([val for val in x if type(val) != float]))).reset_index()
     del data[f'{in_col}_split']
+    print('finished ids_xref')
     return pd.merge(data, merged, on=in_col, how='left')
 
 
@@ -650,13 +653,13 @@ def chart_map(
         taxa_column=None, quantification_columns=None, number_of_taxa=10, grey_taxa='Other taxa',
         differential_colormap='viridis'):
     mmap = KGML_parser.read(open(kgml_filename))
-    kegg_pathway_map = KEGGPathwayMap(pathway=mmap, ec_list=ec_list)
+    kegg_pathway_map = KEGGPathwayMap(pathway=mmap, ec_list=ec_list, keggcharter_info=data, q_cols=quantification_columns, taxa_column=taxa_column)
     kegg_pathway_map.genomic_potential_taxa(
         data, quantification_columns, ko_column, taxon_to_mmap_to_orthologs, mmaps2taxa=mmaps2taxa,
         taxa_column=taxa_column, output=output, number_of_taxa=number_of_taxa,
         grey_taxa=grey_taxa)
     mmap = KGML_parser.read(open(kgml_filename))        # need to re-read the file because it's modified by the function
-    kegg_pathway_map = KEGGPathwayMap(pathway=mmap, ec_list=ec_list)
+    kegg_pathway_map = KEGGPathwayMap(pathway=mmap, ec_list=ec_list, keggcharter_info=data, q_cols=quantification_columns, taxa_column=taxa_column)
     kegg_pathway_map.differential_expression_sample(
         data, quantification_columns, ko_column, mmaps2taxa=mmaps2taxa, taxa_column=taxa_column, output=output,
         colormap_name=differential_colormap)
