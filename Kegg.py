@@ -1,30 +1,29 @@
-##Nesta abordagem, tentamos trabalhar com o React diretamente no HTML gerado pelo seu script Python
 import json
 import csv
 import xml.etree.ElementTree as ET
 import os
-import math
+
 
 def load_json_to_dict(filepath: str) -> dict[str, any]:
     """
-    Carrega um arquivo JSON a partir de um caminho especificado e retorna o conteúdo como um dicionário.
+    Loads a JSON file from a specified path and returns the contents as a dictionary.
 
     Parameters
     ----------
     filepath : str
-        O caminho para o ficheiro JSON.
+        The path to the JSON file.
 
     Returns
     -------
     dict
-        O conteúdo do ficheiro JSON como um dicionário.
+        The contents of the JSON file as a dictionary.
     """
     with open(filepath, 'r') as file:
         data = json.load(file)
     return data
 
 
-def carregar_kgml(caminho_kgml : str) -> None:
+def load_kgml(caminho_kgml : str) -> None:
     """
     Loads a KGML file and returns the root of the XML document.
 
@@ -43,68 +42,68 @@ def carregar_kgml(caminho_kgml : str) -> None:
     return root
 
 
-def extrair_titulo_pathway(caminho_kgml: str) -> str:
+def extract_pathway_title(caminho_kgml: str) -> str:
     """
-    Extrai o título da pathway de um arquivo KGML.
+    Extracts the pathway title from a KGML file.
 
     Parameters
     ----------
     caminho_kgml : str
-        O caminho para o arquivo KGML.
+        The path to the KGML file.
 
     Returns
     -------
     str
-        O título da pathway.
+        The title of the pathway.
     """
 
     tree = ET.parse(caminho_kgml)
     root = tree.getroot()
     
-    titulo_pathway = root.get('title', 'Título não encontrado')
+    titulo_pathway = root.get('title', 'Title not found')
     return titulo_pathway
 
 
-def extrair_numero_pathway(caminho_kgml: str) -> str:
+def extract_pathway_number(caminho_kgml: str) -> str:
     """
-    Extrai o número da pathway de um arquivo KGML.
+    Extracts the pathway number from a KGML file.
 
     Parameters
     ----------
     caminho_kgml : str
-        O caminho para o arquivo KGML.
+        The path to the KGML file.
 
     Returns
     -------
     str
-        O número da pathway.
+        The pathway number.
     """
 
     tree = ET.parse(caminho_kgml)
     root = tree.getroot()
     
-    numero_pathway = root.get('number', 'Número não encontrado')
+    numero_pathway = root.get('number', 'Number not found')
     return numero_pathway
 
 
-def extrair_elementos_graficos_com_id(root, tipo: str = 'rectangle') -> list[dict[str, str]]:
+def extract_graphical_elements_with_id(root, tipo: str = 'rectangle') -> list[dict[str, str]]:
     """
-    Extrai elementos gráficos de um tipo específico do documento XML da raiz e inclui seus IDs, 
-    coordenadas e um link associado a cada ID.
+    Extracts graphic elements of a specific type from the root XML document and includes their IDs, 
+    coordinates and a link associated with each ID.
 
     Parameters
     ----------
     root : xml.etree.ElementTree.Element
-        A raiz do documento XML.
+        The root of the XML document.
 
     tipo : str
-        Tipo de elemento gráfico a ser extraído (o padrão é 'rectangle').
+        Type of graphic element to be extracted (the default is ‘rectangle’).
 
     Returns
     -------
     list[dict[str, str]]
-        Lista de dicionários que contém dados sobre os elementos gráficos, incluindo os seus IDs,
-        as coordenadas (x, y, width, height) e um link associado.
+        List of dictionaries containing data on graphic elements, including their IDs,
+        the coordinates (x, y, width, height) and an associated link.
     """
     elementos_id = []
     
@@ -131,28 +130,28 @@ def extrair_elementos_graficos_com_id(root, tipo: str = 'rectangle') -> list[dic
     return elementos_id
 
 
-def enriquecer_elementos_graficos(elementos_graficos_com_id: list[dict[str, str]], caminho_tsv: str, caminho_json_taxon: str, caminho_json_kos: str) -> list[dict[str, str]]:
+def enrich_graphic_elements(elementos_graficos_com_id: list[dict[str, str]], caminho_tsv: str, caminho_json_taxon: str, caminho_json_kos: str) -> list[dict[str, str]]:
     """
-    Enriquece os elementos gráficos com os dados provenientes de um arquivo TSV e dois arquivos JSON.
+    It enriches the graphic elements with data from a TSV file and two JSON files.
 
     Parameters
     ----------
     elementos_graficos : list[dict[str, str]]
-        Lista de dicionários com dados sobre os elementos gráficos.
+        List of dictionaries with data on graphic elements.
 
     caminho_tsv : str
-        Caminho para o arquivo TSV que contém mapeamentos de ID para nomes (EC ou KO).
+        Path to the TSV file containing ID-to-name mappings (EC or KO).
 
     caminho_json_taxon : str
-        Caminho para o arquivo JSON que contém mapeamentos de ID para taxon.
+        Path to the JSON file containing ID-to-taxon mappings.
 
     caminho_json_kos : str
-        Caminho para o arquivo JSON que contém mapeamentos de ID para KOs.
+        Path to the JSON file containing ID mappings for KOs.
 
     Returns
     -------
     list[dict[str, str]]
-        Lista de dicionários com dados sobre os elementos gráficos enriquecidos com informações adicionais.
+        List of dictionaries with data on graphic elements enriched with additional information.
     """
     id_to_name = {}
     with open(caminho_tsv, 'r') as file:
@@ -173,87 +172,27 @@ def enriquecer_elementos_graficos(elementos_graficos_com_id: list[dict[str, str]
 
     return elementos_graficos_com_id
 
+#######################################não faz nada#############
 
-def imprimir_elementos_graficos(caminho_kgml : str) -> None:
+
+def create_coloured_boxes(id : str, colors_dict : dict[str, list[str]]) -> str:
     """
-    Carrega um ficheiro KGML, extrai elementos gráficos rectangulares e imprime-os.
-
-    Parameters
-    ----------
-    caminho_kgml : str 
-        O caminho para o ficheiro KGML.
-
-    Returns
-    -------
-    None
-    """
-
-    root = carregar_kgml(caminho_kgml)
-    retangulos = extrair_elementos_graficos_com_id(root)
-    for ret in retangulos:
-        print(ret)
-    print("Total de elementos gráficos:", len(retangulos))
-
-
-def ler_arquivos_tsv(caminho_differential : str, caminho_potential : str) -> dict:
-    """
-    Carrega dados de dois arquivos TSV e retorna um dicionário com identificadores únicos 
-    como chaves e as respectivas taxas como valores. Se um identificador
-    aparecer em ambos os arquivos, o valor do segundo arquivo substituirá o do primeiro.
-
-    Parameters
-    ----------
-    caminho_differential : str
-        O caminho para o arquivo TSV que contém os dados diferenciais.
-    caminho_potential : str
-        O caminho para o arquivo TSV que contém os dados potenciais.
-
-    Returns
-    -------
-    dict
-        Um dicionário onde cada chave é um identificador (int) dos dados e o valor é a taxa (str) associada.
-    """
-    dados = {}
-    
-    with open(caminho_differential, 'r') as file:
-        reader = csv.reader(file, delimiter='\t')
-        next(reader, None)  
-        for linha in reader:
-            if linha:
-                box_id = int(linha[0])  
-                taxa = linha[1]         
-                dados[box_id] = taxa
-    
-    with open(caminho_potential, 'r') as file:
-        reader = csv.reader(file, delimiter='\t')
-        next(reader, None)  
-        for linha in reader:
-            if linha:
-                box_id = int(linha[0])  
-                taxa = linha[1]         
-                dados[box_id] = taxa  
-
-    return dados
-
-
-def criar_caixas_coloridas(id : str, colors_dict : dict[str, list[str]]) -> str:
-    """
-    Gera uma string HTML que representa várias subcaixas alinhadas horizontalmente,
-    cada uma colorida conforme especificado no dicionário para um ID específico.
-    As subcaixas são criadas com uma borda preta para melhor visualização.
+    Generates an HTML string representing several horizontally aligned sub-boxes,
+    each coloured as specified in the dictionary for a specific ID.
+    The sub-boxes are created with a black border for better visualisation.
 
     Parameters
     ----------
         id : str 
-            O identificador que aponta para a lista de cores no dicionário.
+            The identifier that points to the list of colours in the dictionary.
 
         colors_dict : dict[str, list[str]] 
-            Um dicionário mapeando identificadores para listas de strings de cores.
+            A dictionary mapping identifiers to lists of colour strings.
 
     Returns
     -------
         str 
-            Uma string HTML que representa uma linha de subcaixas coloridas, cada uma com borda preta.
+            An HTML string representing a row of coloured sub-boxes, each with a black border.
     """
     colors = colors_dict.get(str(id), ["#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF"])  
     boxes_html = ''.join([
@@ -263,21 +202,21 @@ def criar_caixas_coloridas(id : str, colors_dict : dict[str, list[str]]) -> str:
     return f'<div style="width: 100%; height: 50px; display: flex;">{boxes_html}</div>'
 
 
-def carregar_tsv_por_id(diretoria: str, id: int) -> dict:
+def load_tsv_by_id(diretoria: str, id: int) -> dict:
     """
-    Busca um arquivo TSV no diretório especificado que corresponda ao ID fornecido e converte para um dicionário.
+    Searches for a TSV file in the specified directory that matches the ID provided and converts it to a dictionary.
     
     Parameters
     ----------
-        diretorio : str
-            O caminho do diretório onde os arquivos TSV estão armazenados.
+        diretoria : str
+            The path of the directory where the TSV files are stored.
         id : int
-            O ID que identifica o arquivo TSV específico.
+            The ID that identifies the specific TSV file.
 
     Returns
     -------
         dict
-            Dicionário com a estrutura de dados extraída do arquivo TSV.
+            Dictionary with the data structure extracted from the TSV file.
 
     Raises
     ------
@@ -300,25 +239,25 @@ def carregar_tsv_por_id(diretoria: str, id: int) -> dict:
     return resultado
 
 
-def criar_caixas_por_amostra(taxa_expressions: dict, taxa_colors: dict) -> list:
+def create_sample_boxes(taxa_expressions: dict, taxa_colors: dict) -> list:
     """
-    Gera uma lista de strings HTML, cada uma representando as expressões diferenciais de uma amostra
-    em forma de caixa vertical colorida.
+    Generates a list of HTML strings, each representing the differential expressions of a sample
+    in the form of a coloured vertical box.
 
     Parameters
     ----------
         taxa_expressions : dict
-            Dicionário com taxonomias e suas expressões para cada amostra.
+            Dictionary with taxonomies and their expressions for each sample.
         taxa_colors : dict
-            Dicionário com a cor correspondente para cada taxonomia.
+            Dictionary with the corresponding colour for each taxonomy.
 
     Returns
     -------
         list
-            Lista de strings HTML, cada uma representando uma caixa para uma amostra.
+            List of HTML strings, each representing a box for a sample.
     """
     if not isinstance(taxa_colors, dict):
-        raise ValueError("taxa_colors deve ser um dicionário de cores")
+        raise ValueError("taxa_colors should be a colour dictionary")
 
     html = ''
     column = 1
@@ -341,38 +280,38 @@ def criar_caixas_por_amostra(taxa_expressions: dict, taxa_colors: dict) -> list:
     return html
 
 
-def criar_pagina_detalhe(id : str, link : str, ec_ko : str, KO : list[str], Taxon : list[str], colors_dict : dict[str, list[str]], taxa_expressions : dict, taxa_colors : dict):
+def create_detail_page(id : str, link : str, ec_ko : str, KO : list[str], Taxon : list[str], colors_dict : dict[str, list[str]], taxa_expressions : dict, taxa_colors : dict):
     """
-    Cria uma página HTML detalhada para um ID específico com base nos dados fornecidos e nas cores definidas no dicionário.
+    Creates a detailed HTML page for a specific ID based on the data provided and the colours defined in the dictionary.
     
     Parameters
     ----------
         id : str 
-            O identificador do elemento, usado para criar caixas coloridas específicas e nomear o arquivo HTML.
+            The element identifier, used to create specific coloured boxes and to name the HTML file.
         link : str
-            O URL para o qual o botão na página HTML deve redirecionar.
+            The URL to which the button on the HTML page should redirect.
         ec_ko : str 
-            O número EC ou KO que será usado como título da página.
+            The EC or KO number that will be used as the page title.
         KO : list[str] 
-            Lista de números K que serão exibidos na página.
+            List of K numbers that will be displayed on the page.
         Taxon : list[str] 
-            Lista de nomes de taxons associados que serão exibidos na página.
+            List of associated taxon names that will be displayed on the page.
         colors_dict : dict[str, list[str]] 
-            Dicionário mapeando identificadores para listas de cores, usado para colorir caixas na página.
+            Dictionary mapping identifiers to colour lists, used to colour boxes on the page.
         taxa_expressions : dict
-            Dicionário com taxonomias e suas expressões para cada amostra.
+            Dictionary with taxonomies and their expressions for each sample.
         taxa_colors : dict
-            Dicionário com a cor correspondente para cada taxonomia.
+            Dictionary with the corresponding colour for each taxonomy.
 
     Effects
     -------
-        Cria um arquivo HTML na diretoria atual com o nome baseado no pathway e no ID fornecido.
+        Creates an HTML file in the current directory with a name based on the pathway and ID provided.
     """
-    numero_pathway = extrair_numero_pathway(caminho_kgml)
-    titulo_pathway = extrair_titulo_pathway(caminho_kgml)
-    color_boxes = criar_caixas_coloridas(id, colors_dict)
+    numero_pathway = extract_pathway_number(caminho_kgml)
+    titulo_pathway = extract_pathway_title(caminho_kgml)
+    color_boxes = create_coloured_boxes(id, colors_dict)
 
-    sample_boxes = criar_caixas_por_amostra(taxa_expressions, taxa_colors)  if taxa_expressions is not None else ''
+    sample_boxes = create_sample_boxes(taxa_expressions, taxa_colors)  if taxa_expressions is not None else ''
 
     imagem_url_differential = "./KEGGCharter/first_time_running_KC/maps/differential_ko00680_legend.png"
     imagem_url_potential = "./KEGGCharter/first_time_running_KC/maps/potential_ko00680_legend.png"
@@ -484,17 +423,17 @@ def criar_pagina_detalhe(id : str, link : str, ec_ko : str, KO : list[str], Taxo
         file.write(detalhe_html)
 
 
-def criar_image_maps(taxa_colors : dict, coordenadas: list[dict[str, str]],
+def create_image_maps(taxa_colors : dict, coordenadas: list[dict[str, str]],
                      imagem: str = "./KEGGCharter/original_kegg_map.png", arquivo_saida: str = f"image_maps.html",
                      titulo_imagem: str = "Methane metabolism Map",
                      colors_dict: str = './KEGGCharter/info/ko00680_boxes2quant_colors.json') -> None:
     """
-    Cria um arquivo HTML com mapas de imagem com base em coordenadas especificadas.
+    Creates an HTML file with image maps based on specified coordinates.
 
     Parameters
     ----------
     taxa_colors : dict
-            Dicionário com a cor correspondente para cada taxonomia.
+        Dictionary with the corresponding colour for each taxonomy.
             
     coordenadas : list[dict[str, str]]
         Creates an HTML file with image maps based on specified coordinates.
@@ -536,7 +475,7 @@ def criar_image_maps(taxa_colors : dict, coordenadas: list[dict[str, str]],
         y2 = y1 + int(coords['height']) * 2.2
         return f"{x1},{y1},{x2},{y2}"
 
-    numero_pathway = extrair_numero_pathway(caminho_kgml)
+    numero_pathway = extract_pathway_number(caminho_kgml)
     html = f"<!DOCTYPE html>\n<html lang='en'>\n<head>\n    <meta charset='UTF-8'>\n    <title>{titulo_imagem}</title>\n</head>\n<body>\n    <h2>{titulo_imagem}</h2>\n    <img src='{imagem}' usemap='#potentialMap' alt='{titulo_imagem}'>\n    <map name='potentialMap'>\n"
 
     for coord in coordenadas:
@@ -545,8 +484,8 @@ def criar_image_maps(taxa_colors : dict, coordenadas: list[dict[str, str]],
         ec_ko = coord['EC_KO']
         KO = coord['kos']
         Taxon = coord['taxon']
-        taxa_expressions = carregar_tsv_por_id(diretoria, id)
-        criar_pagina_detalhe(id, link, ec_ko, KO, Taxon, colors_dict, taxa_expressions, taxa_colors)
+        taxa_expressions = load_tsv_by_id(diretoria, id)
+        create_detail_page(id, link, ec_ko, KO, Taxon, colors_dict, taxa_expressions, taxa_colors)
         area_str = coords_to_area(coord)
         html += f'        <area shape="rect" coords="{area_str}" href="Map{numero_pathway}_Box{id}.html" target="_blank" alt="Element ID {id}">\n'
 
@@ -555,7 +494,7 @@ def criar_image_maps(taxa_colors : dict, coordenadas: list[dict[str, str]],
     with open(arquivo_saida, 'w') as file:
         file.write(html)
 
-    print(f"HTML com mapas de imagem gerado com sucesso e salvo como {arquivo_saida}!")
+    print(f"HTML with image maps successfully generated and saved as {arquivo_saida}!")
 
 
 if __name__ == '__main__':
@@ -564,35 +503,14 @@ if __name__ == '__main__':
     caminho_json_taxon = './KEGGCharter/info/ko00680_boxes2taxon.json'
     caminho_json_kos = './KEGGCharter/info/ko00680_box2kos.json'
     caminho_json_colors = './KEGGCharter/info/ko00680_boxes2quant_colors.json'
-    root = carregar_kgml(caminho_kgml)
-    titulo_pathway = extrair_titulo_pathway(caminho_kgml)
-    retangulos = extrair_elementos_graficos_com_id(root)
-    retangulos_enriquecidos = enriquecer_elementos_graficos(retangulos, caminho_tsv, caminho_json_taxon,
+    root = load_kgml(caminho_kgml)
+    titulo_pathway = extract_pathway_title(caminho_kgml)
+    retangulos = extract_graphical_elements_with_id(root)
+    retangulos_enriquecidos = enrich_graphic_elements(retangulos, caminho_tsv, caminho_json_taxon,
                                                             caminho_json_kos)
     colors_dict = load_json_to_dict(caminho_json_colors)
     diretoria = 'KEGGCharter/info'
     taxa_colors = load_json_to_dict('./KEGGCharter/info/ko00680_taxa2colors.json')
-    criar_image_maps(taxa_colors, retangulos_enriquecidos,
+    create_image_maps(taxa_colors, retangulos_enriquecidos,
                      imagem="./KEGGCharter/original_kegg_map.png", arquivo_saida=f"image_maps_{titulo_pathway}.html",
                      titulo_imagem=f"{titulo_pathway} Map", colors_dict=colors_dict)
-
-
-
-#main para ver output da função enriquecer_elementos_graficos
-#def main():
-    # Carregar os dados gráficos do XML (substituir pelo caminho real do arquivo XML de exemplo)
-#    caminho_kgml = './resources_directory/kc_kgmls/ko00680.xml'
-#    root = carregar_kgml(caminho_kgml)
-#    elementos_graficos_com_id = extrair_elementos_graficos_com_id(root)
-
-    # Enriquecimento dos dados
-#    elementos_enriquecidos = enriquecer_elementos_graficos(
-#        elementos_graficos_com_id, './KEGGCharter/info/ko00680_box2name.tsv', './KEGGCharter/info/ko00680_boxes2taxon.json', './KEGGCharter/info/ko00680_box2kos.json'
-#    )
-
-    # Imprimir os elementos gráficos enriquecidos
-#    for elemento in elementos_enriquecidos:
-#        print(elemento)
-
-#if __name__ == '__main__':
-#    main()
